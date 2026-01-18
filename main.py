@@ -538,13 +538,14 @@ def add_quotation():
                 flash(f'Customer with identification number {customer_identification} not found. Please add the customer first.', 'error')
                 return redirect(url_for('add_quotation'))
 
+
             # Create quotation with calculated total
-            quotation = quotation(
+            new_quotation = quotation(
                 customer_id=customer.id,
                 total_amount=calculated_total,
                 status='PENDING'
             )
-            db_session.add(quotation)
+            db_session.add(new_quotation)
             db_session.flush()  # Get quotation ID without committing
 
             # Create quotation items (Stock deduction MOVED to Invoice creation)
@@ -556,7 +557,7 @@ def add_quotation():
                     custom_code = f"CUST-{timestamp_code}"
 
                     quotation_item = quotationItem(
-                        quotation_id=quotation.id,
+                        quotation_id=new_quotation.id,
                         inventory_id=None,
                         quantity=item_data['quantity'],
                         unit_price=item_data['unit_price'],
@@ -567,7 +568,7 @@ def add_quotation():
                 else:
                     # Regular inventory item
                     quotation_item = quotationItem(
-                        quotation_id=quotation.id,
+                        quotation_id=new_quotation.id,
                         inventory_id=item_data['inventory_id'],
                         quantity=item_data['quantity'],
                         unit_price=item_data['unit_price'],
