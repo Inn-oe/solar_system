@@ -14,7 +14,8 @@ import sqlalchemy as db
 from models import (Supplier, Customer, Inventory, Activity, ActivityType, quotation, quotationItem,
                         StockTransaction, FinancialRecord, CustomField, FinancialCategory,
                         FuelRecord, MileageRecord, JourneyRecord, Location, Pricing,
-                        StockChangeReason, FinancialType, TransactionType, PaymentType, Currency)
+                        StockChangeReason, FinancialType, TransactionType, PaymentType, Currency,
+                        Invoice, InvoiceItem, Payment, InvoiceStatus)
 from currency_converter import get_exchange_rates
 from database import db_session, init_db
 
@@ -546,16 +547,21 @@ def add_quotation():
             db_session.add(quotation)
             db_session.flush()  # Get quotation ID without committing
 
-            # Create quotation items and update stock
+            # Create quotation items (Stock deduction MOVED to Invoice creation)
             for item_data in quotation_items_data:
                 if item_data['inventory_id'] is None:
-                    # Custom item - no inventory update needed
+                    # Custom item
+                    # Generate Custom Item Code
+                    timestamp_code = datetime.now().strftime('%Y%m%d%H%M%S')
+                    custom_code = f"CUST-{timestamp_code}"
+
                     quotation_item = quotationItem(
                         quotation_id=quotation.id,
                         inventory_id=None,
                         quantity=item_data['quantity'],
                         unit_price=item_data['unit_price'],
-                        description=item_data['custom_name']
+                        description=item_data['custom_name'],
+                        item_code=custom_code
                     )
                     db_session.add(quotation_item)
                 else:
@@ -564,25 +570,13 @@ def add_quotation():
                         quotation_id=quotation.id,
                         inventory_id=item_data['inventory_id'],
                         quantity=item_data['quantity'],
-                        unit_price=item_data['unit_price']
+                        unit_price=item_data['unit_price'],
+                        item_code=item_data['inventory_item'].specifications or "INV-ITM" # Use specs or fallback
                     )
                     db_session.add(quotation_item)
 
-                    # Update inventory quantity
-                    item_data['inventory_item'].quantity -= item_data['quantity']
+                    # NOTE: Stock is NOT deducted here anymore. It will be deducted when converting to Invoice.
 
-                    # Record stock transaction
-                    stock_transaction = StockTransaction(
-                        inventory_id=item_data['inventory_id'],
-                        transaction_type=TransactionType.STOCK_OUT,
-                        quantity=-item_data['quantity'],
-                        unit_price=item_data['unit_price'],
-                        total_value=-item_data['item_total'],
-                        reference_id=quotation.id,
-                        reference_type='quotation',
-                        notes=f'Sold via quotation #{quotation.id}'
-                    )
-                    db_session.add(stock_transaction)
 
             # Commit all changes
             db_session.commit()
@@ -1406,6 +1400,604 @@ def generate_quotation_pdf(quotation_id):
     buffer.seek(0)
 
     return send_file(buffer, as_attachment=True, download_name=f'quotation_{quotation.id}.pdf', mimetype='application/pdf')
+
+@app.route('/invoices')
+def invoices():
+    """List all invoices"""
+    invoices = db_session.query(Invoice).order_by(Invoice.date_created.desc()).all()
+    return render_template('invoices.html', invoices=invoices)
+
+@app.route('/invoices/add', methods=['GET', 'POST'])
+def add_invoice():
+    """Create new invoice"""
+    if request.method == 'POST':
+        from models import InvoiceStatus, TransactionType, Currency, PaymentType
+
+        try:
+            # Process and validate invoice items
+            item_ids = request.form.getlist('item_id[]')
+            quantities = request.form.getlist('quantity[]')
+            unit_prices = request.form.getlist('unit_price[]')
+            custom_item_names = request.form.getlist('custom_item_name[]')
+
+            calculated_total = 0
+            invoice_items_data = []
+
+            for i, item_id in enumerate(item_ids):
+                if item_id:
+                    if item_id == 'custom':
+                        custom_name = custom_item_names[i] if i < len(custom_item_names) else ''
+                        if not custom_name:
+                            flash('Custom item name is required', 'error')
+                            return redirect(url_for('add_invoice'))
+
+                        qty = int(quantities[i])
+                        unit_price = float(unit_prices[i])
+                        item_total = qty * unit_price
+                        calculated_total += item_total
+
+                        # Generate Custom Code
+                        timestamp_code = datetime.now().strftime('%Y%m%d%H%M%S')
+                        custom_code = f"CUST-{timestamp_code}-{i}"
+
+                        invoice_items_data.append({
+                            'inventory_id': None,
+                            'custom_name': custom_name,
+                            'item_code': custom_code,
+                            'quantity': qty,
+                            'unit_price': unit_price,
+                            'item_total': item_total
+                        })
+                    else:
+                        inventory_item = db_session.query(Inventory).get(int(item_id))
+                        if not inventory_item:
+                            flash(f'Item not found', 'error')
+                            return redirect(url_for('add_invoice'))
+
+                        qty = int(quantities[i])
+                        if inventory_item.quantity < qty:
+                            flash(f'Insufficient stock for {inventory_item.name}. Available: {inventory_item.quantity}', 'error')
+                            return redirect(url_for('add_invoice'))
+
+                        unit_price = float(unit_prices[i])
+                        item_total = qty * unit_price
+                        calculated_total += item_total
+
+                        invoice_items_data.append({
+                            'inventory_id': int(item_id),
+                            'inventory_item': inventory_item,
+                            'item_code': inventory_item.specifications or "INV-ITM",
+                            'quantity': qty,
+                            'unit_price': unit_price,
+                            'item_total': item_total
+                        })
+
+            customer_identification = request.form['customer_identification']
+            customer = db_session.query(Customer).filter_by(identification_number=customer_identification).first()
+            if not customer:
+                flash(f'Customer not found', 'error')
+                return redirect(url_for('add_invoice'))
+
+            invoice = Invoice(
+                customer_id=customer.id,
+                total_amount=calculated_total,
+                balance_due=calculated_total,
+                status=InvoiceStatus.DRAFT,
+                due_date=datetime.now() # Default immediate
+            )
+            db_session.add(invoice)
+            db_session.flush()
+
+            for item_data in invoice_items_data:
+                inv_item = InvoiceItem(
+                    invoice_id=invoice.id,
+                    inventory_id=item_data['inventory_id'],
+                    item_code=item_data['item_code'],
+                    description=item_data.get('custom_name') or item_data['inventory_item'].name,
+                    quantity=item_data['quantity'],
+                    unit_price=item_data['unit_price'],
+                    amount=item_data['item_total']
+                )
+                db_session.add(inv_item)
+
+                if item_data['inventory_id']:
+                    # Deduct Stock
+                    item_data['inventory_item'].quantity -= item_data['quantity']
+                    
+                    stock_transaction = StockTransaction(
+                        inventory_id=item_data['inventory_id'],
+                        transaction_type=TransactionType.STOCK_OUT,
+                        quantity=-item_data['quantity'],
+                        unit_price=item_data['unit_price'],
+                        total_value=-item_data['item_total'],
+                        reference_id=invoice.id,
+                        reference_type='invoice',
+                        notes=f'Sold via Invoice #{invoice.id}'
+                    )
+                    db_session.add(stock_transaction)
+
+            db_session.commit()
+            flash('Invoice created successfully!', 'success')
+            return redirect(url_for('invoices'))
+
+        except Exception as e:
+            db_session.rollback()
+            flash(f'Error creating invoice: {str(e)}', 'error')
+            return redirect(url_for('add_invoice'))
+
+    customers = db_session.query(Customer).all()
+    inventory_items = db_session.query(Inventory).filter(Inventory.quantity > 0).all()
+    return render_template('add_invoice.html', customers=customers, inventory_items=inventory_items)
+
+@app.route('/quotations/<int:quotation_id>/convert', methods=['POST'])
+def convert_to_invoice(quotation_id):
+    """Convert quotation to invoice"""
+    try:
+        quotation_obj = db_session.query(quotation).get(quotation_id)
+        if not quotation_obj:
+            flash('Quotation not found', 'error')
+            return redirect(url_for('quotations'))
+
+        # Check stock availability first
+        for item in quotation_obj.items:
+            if item.inventory_id:
+                if item.inventory.quantity < item.quantity:
+                    flash(f'Insufficient stock for {item.inventory.name} to convert quotation. Available: {item.inventory.quantity}, Required: {item.quantity}', 'error')
+                    return redirect(url_for('quotations'))
+
+        invoice = Invoice(
+            customer_id=quotation_obj.customer_id,
+            quotation_id=quotation_obj.id,
+            total_amount=quotation_obj.total_amount,
+            balance_due=quotation_obj.total_amount,
+            status=InvoiceStatus.DRAFT,
+            due_date=datetime.now()
+        )
+        db_session.add(invoice)
+        db_session.flush()
+
+        for q_item in quotation_obj.items:
+            # Generate code if missing (for legacy items)
+            code = q_item.item_code
+            if not code:
+                if q_item.inventory_id:
+                    code = q_item.inventory.specifications or "INV-ITM"
+                else:
+                    code = f"CUST-LEGACY-{q_item.id}"
+
+            inv_item = InvoiceItem(
+                invoice_id=invoice.id,
+                inventory_id=q_item.inventory_id,
+                item_code=code,
+                description=q_item.description or (q_item.inventory.name if q_item.inventory else "Item"),
+                quantity=q_item.quantity,
+                unit_price=q_item.unit_price,
+                amount=q_item.quantity * q_item.unit_price
+            )
+            db_session.add(inv_item)
+
+            if q_item.inventory_id:
+                # Deduct Stock
+                q_item.inventory.quantity -= q_item.quantity
+                
+                stock_transaction = StockTransaction(
+                    inventory_id=q_item.inventory_id,
+                    transaction_type=TransactionType.STOCK_OUT,
+                    quantity=-q_item.quantity,
+                    unit_price=q_item.unit_price,
+                    total_value=-(q_item.quantity * q_item.unit_price),
+                    reference_id=invoice.id,
+                    reference_type='invoice',
+                    notes=f'Converted from Quotation #{quotation_obj.id} to Invoice #{invoice.id}'
+                )
+                db_session.add(stock_transaction)
+
+        quotation_obj.status = 'PROCESSED' # Or some status indicating it's done
+        db_session.commit()
+        flash(f'Successfully converted Quotation #{quotation_id} to Invoice #{invoice.id}', 'success')
+        return redirect(url_for('view_invoice', invoice_id=invoice.id))
+
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error converting quotation: {str(e)}', 'error')
+        return redirect(url_for('quotations'))
+
+@app.route('/invoice/<int:invoice_id>')
+def view_invoice(invoice_id):
+    """View an invoice as an HTML page"""
+    invoice = db_session.query(Invoice).get(invoice_id)
+    if not invoice:
+        # Check if we should render 404
+        from flask import abort
+        abort(404)
+    
+    invoice_items = invoice.items
+    total_quantity = sum(item.quantity for item in invoice_items)
+
+    return render_template('view_invoice.html', invoice=invoice, invoice_items=invoice_items, total_quantity=total_quantity)
+
+@app.route('/invoice/<int:invoice_id>/pdf')
+def generate_invoice_pdf(invoice_id):
+    """Generate PDF invoice"""
+    invoice = db_session.query(Invoice).get(invoice_id)
+    if not invoice:
+        from flask import abort
+        abort(404)
+    
+    invoice_items = invoice.items
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # Logo and Header (Same as Quotation)
+    logo_path = os.path.join(app.root_path, 'static', 'images', 'logo.png')
+    logo = Image(logo_path, width=1.2*inch, height=1.2*inch, kind='proportional')
+
+    company_name_style = ParagraphStyle(
+        'company_name_style',
+        parent=styles['h1'],
+        fontSize=22,
+        textColor=colors.red,
+        alignment=0,
+        leading=26
+    )
+
+    contact_info_style = ParagraphStyle(
+        'contact_info_style',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11
+    )
+
+    address_style = ParagraphStyle(
+        'address_style',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        alignment=2
+    )
+
+    header_text = """
+    <b>+263 774 040 059</b><br/>
+    <b>+263 717 039 984</b><br/>
+    <b>giebeeengineering@gmail.com</b>
+    """
+    address_text = """
+    <b>108 Central Avenue</b><br/>
+    <b>Room 8, 1st Floor</b><br/>
+    <b>Harare, Zimbabwe</b>
+    """
+
+    header_table_data = [
+        [logo, Paragraph('<b>GieBee Engineering (Pvt) Ltd</b>', company_name_style), ''],
+        ['', Paragraph(header_text, contact_info_style), Paragraph(address_text, address_style)]
+    ]
+
+    header_table = Table(header_table_data, colWidths=[1.3*inch, 3.5*inch, 2.7*inch])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('SPAN', (0, 0), (0, 1)),
+        ('SPAN', (1, 0), (2, 0)),
+        ('ALIGN', (2, 1), (2, 1), 'RIGHT'),
+    ]))
+
+    story.append(header_table)
+    story.append(Spacer(1, 0.1*inch))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.red))
+    story.append(Spacer(1, 0.2*inch))
+
+    # Invoice Title
+    title_style = ParagraphStyle(
+        'invoice_style',
+        parent=styles['h2'],
+        fontSize=16,
+        alignment=0,
+        spaceAfter=8
+    )
+    story.append(Paragraph('Tax Invoice', title_style))
+    story.append(Paragraph(f'INV-{invoice.id:05d}', styles['Normal']))
+    story.append(Spacer(1, 0.2*inch))
+
+    # Customer Name and Date
+    customer_date_style = ParagraphStyle(
+        'customer_date_style',
+        parent=styles['Normal'],
+        fontSize=12,
+        alignment=0,
+        spaceAfter=10
+    )
+    story.append(Paragraph(f"<b>Customer:</b> {invoice.customer.name}", customer_date_style))
+    story.append(Paragraph(f"<b>Date:</b> {invoice.date_created.strftime('%d-%m-%Y')}", customer_date_style))
+    story.append(Paragraph(f"<b>Status:</b> {invoice.status.value}", customer_date_style))
+    story.append(Spacer(1, 0.2*inch))
+
+    # Items Table
+    items_data = [['Sr', 'Item Code', 'Description', 'Quantity', 'Price', 'Total Amount']]
+    
+    for i, item in enumerate(invoice_items):
+        item_code = item.item_code or "N/A"
+        item_text = item.description 
+        items_data.append([
+            str(i + 1),
+            Paragraph(item_code, styles['Normal']),
+            Paragraph(item_text, styles['Normal']),
+            str(item.quantity),
+            f"${item.unit_price:,.2f}",
+            f"${item.amount:,.2f}"
+        ])
+
+    items_table = Table(items_data, colWidths=[0.4*inch, 1.2*inch, 2.9*inch, 0.7*inch, 1*inch, 1.3*inch])
+    items_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('TOPPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    story.append(items_table)
+    story.append(Spacer(1, 0.2*inch))
+
+    # Total
+    total_data = [
+        ['', '', '', '', 'Total:', f"${invoice.total_amount:,.2f}"],
+        ['', '', '', '', 'Paid:', f"${invoice.paid_amount:,.2f}"],
+        ['', '', '', '', 'Balance:', f"${invoice.balance_due:,.2f}"]
+    ]
+    total_table = Table(total_data, colWidths=[0.4*inch, 1.2*inch, 2.9*inch, 0.7*inch, 1*inch, 1.3*inch])
+    total_table.setStyle(TableStyle([
+        ('ALIGN', (4, 0), (-1, -1), 'RIGHT'),
+        ('FONTNAME', (4, 0), (-1, -1), 'Helvetica-Bold'),
+        ('LINEABOVE', (4, 2), (-1, 2), 1, colors.black), # Line above Balance
+    ]))
+    story.append(total_table)
+    story.append(Spacer(1, 0.4*inch))
+
+    # Banking Details
+    banking_details_style = ParagraphStyle(
+        'banking_details_style',
+        parent=styles['Normal'],
+        spaceBefore=20,
+        fontSize=10
+    )
+    story.append(Paragraph('<b>Banking Details</b>', banking_details_style))
+    banking_info = """
+    Giebee Engineering Pvt Ltd<br/>
+    Bank Transfer: ZB Bank<br/>
+    FCA: 411800483226405<br/>
+    Branch: Chisipite<br/>
+    """
+    story.append(Paragraph(banking_info, styles['Normal']))
+
+    doc.build(story)
+    buffer.seek(0)
+
+    # Sanitize filename
+    safe_name = "".join([c for c in invoice.customer.name if c.isalpha() or c.isdigit() or c==' ']).rstrip().replace(" ", "_")
+    filename = f'Invoice_{invoice.id}_{safe_name}.pdf'
+
+    return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
+
+
+@app.route('/payments')
+def payments():
+    """List all payments"""
+    payments = db_session.query(Payment).order_by(Payment.payment_date.desc()).all()
+    return render_template('payments.html', payments=payments)
+
+@app.route('/invoice/<int:invoice_id>/add_payment', methods=['GET', 'POST'])
+def add_payment(invoice_id):
+    """Add payment to an invoice"""
+    invoice = db_session.query(Invoice).get(invoice_id)
+    if not invoice:
+        flash('Invoice not found', 'error')
+        return redirect(url_for('invoices'))
+
+    if request.method == 'POST':
+        try:
+            amount = float(request.form['amount'])
+            payment_method = request.form['payment_method']
+            reference = request.form.get('reference', '')
+            notes = request.form.get('notes', '')
+
+            if amount > invoice.balance_due:
+                flash(f'Payment amount (${amount}) cannot exceed balance due (${invoice.balance_due})', 'error')
+                return redirect(url_for('add_payment', invoice_id=invoice_id))
+
+            # Create Payment Record
+            from models import PaymentType, InvoiceStatus
+            payment = Payment(
+                invoice_id=invoice.id,
+                amount=amount,
+                payment_method=PaymentType(payment_method),
+                reference_number=reference,
+                notes=notes,
+                payment_date=datetime.now()
+            )
+            db_session.add(payment)
+
+            # Update Invoice Stats
+            invoice.paid_amount += amount
+            invoice.balance_due -= amount
+            
+            if invoice.balance_due <= 0:
+                invoice.status = InvoiceStatus.PAID
+            else:
+                invoice.status = InvoiceStatus.PARTIAL
+            
+            # Create Financial Record (Income)
+            from models import FinancialType
+            fin_record = FinancialRecord(
+                type=FinancialType.INCOME,
+                category="Sales",
+                description=f"Payment for Invoice #{invoice.id}",
+                amount=amount,
+                date=datetime.now(),
+                payment_method=payment_method,
+                reference_id=invoice.id,
+                notes=f"Ref: {reference}" if reference else ""
+            )
+            db_session.add(fin_record)
+
+            db_session.commit()
+            flash('Payment recorded successfully!', 'success')
+            return redirect(url_for('view_invoice', invoice_id=invoice.id))
+
+        except Exception as e:
+            db_session.rollback()
+            flash(f'Error recording payment: {str(e)}', 'error')
+            return redirect(url_for('add_payment', invoice_id=invoice_id))
+
+    return render_template('add_payment.html', invoice=invoice)
+
+
+@app.route('/payment/<int:payment_id>/pdf')
+def generate_payment_pdf(payment_id):
+    """Generate PDF receipt for payment"""
+    payment = db_session.query(Payment).get(payment_id)
+    if not payment:
+        from flask import abort
+        abort(404)
+    
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # Logo and Header (Same as Invoice)
+    logo_path = os.path.join(app.root_path, 'static', 'images', 'logo.png')
+    logo = Image(logo_path, width=1.2*inch, height=1.2*inch, kind='proportional')
+
+    company_name_style = ParagraphStyle(
+        'company_name_style',
+        parent=styles['h1'],
+        fontSize=22,
+        textColor=colors.red,
+        alignment=0,
+        leading=26
+    )
+
+    contact_info_style = ParagraphStyle(
+        'contact_info_style',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11
+    )
+
+    address_style = ParagraphStyle(
+        'address_style',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        alignment=2
+    )
+
+    header_text = """
+    <b>+263 774 040 059</b><br/>
+    <b>+263 717 039 984</b><br/>
+    <b>giebeeengineering@gmail.com</b>
+    """
+    address_text = """
+    <b>108 Central Avenue</b><br/>
+    <b>Room 8, 1st Floor</b><br/>
+    <b>Harare, Zimbabwe</b>
+    """
+
+    header_table_data = [
+        [logo, Paragraph('<b>GieBee Engineering (Pvt) Ltd</b>', company_name_style), ''],
+        ['', Paragraph(header_text, contact_info_style), Paragraph(address_text, address_style)]
+    ]
+
+    header_table = Table(header_table_data, colWidths=[1.3*inch, 3.5*inch, 2.7*inch])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('SPAN', (0, 0), (0, 1)),
+        ('SPAN', (1, 0), (2, 0)),
+        ('ALIGN', (2, 1), (2, 1), 'RIGHT'),
+    ]))
+
+    story.append(header_table)
+    story.append(Spacer(1, 0.1*inch))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.red))
+    story.append(Spacer(1, 0.2*inch))
+
+    # Receipt Title
+    title_style = ParagraphStyle(
+        'receipt_style',
+        parent=styles['h2'],
+        fontSize=16,
+        alignment=0,
+        spaceAfter=8
+    )
+    story.append(Paragraph('Payment Receipt', title_style))
+    story.append(Paragraph(f'RCPT-{payment.id:05d}', styles['Normal']))
+    story.append(Spacer(1, 0.2*inch))
+
+    # Payment Details
+    details_style = ParagraphStyle(
+        'details_style',
+        parent=styles['Normal'],
+        fontSize=12,
+        alignment=0,
+        spaceAfter=10,
+        leading=16
+    )
+    
+    invoice = payment.invoice
+    customer = invoice.customer
+
+    story.append(Paragraph(f"<b>Received From:</b> {customer.name}", details_style))
+    story.append(Paragraph(f"<b>Date:</b> {payment.payment_date.strftime('%d-%m-%Y')}", details_style))
+    story.append(Paragraph(f"<b>Payment Method:</b> {payment.payment_method.value}", details_style))
+    if payment.reference_number:
+        story.append(Paragraph(f"<b>Reference:</b> {payment.reference_number}", details_style))
+    
+    story.append(Spacer(1, 0.2*inch))
+    
+    story.append(Paragraph(f"<b>Payment For:</b> Invoice #{invoice.id}", details_style))
+    
+    story.append(Spacer(1, 0.2*inch))
+
+    # Amount Box
+    amount_data = [
+        ['Amount Received', f"${payment.amount:,.2f}"]
+    ]
+    amount_table = Table(amount_data, colWidths=[2*inch, 2*inch])
+    amount_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 12),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+    story.append(amount_table)
+
+    story.append(Spacer(1, 0.4*inch))
+    story.append(Paragraph("Thank you for your business!", styles['Normal']))
+
+    doc.build(story)
+    buffer.seek(0)
+
+    # Sanitize filename
+    safe_name = "".join([c for c in customer.name if c.isalpha() or c.isdigit() or c==' ']).rstrip().replace(" ", "_")
+    filename = f'Payment_{payment.id}_{safe_name}.pdf'
+
+    return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5002)

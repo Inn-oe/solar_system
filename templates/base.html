@@ -108,10 +108,23 @@
                             <i class="fas fa-file-quotation fa-fw me-3"></i> quotations
                         </a>
                     </li>
+
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'activities' %}active{% endif %}"
                             href="{{ url_for('activities') }}">
                             <i class="fas fa-tasks fa-fw me-3"></i> Activities
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'invoices' %}active{% endif %}"
+                            href="{{ url_for('invoices') }}">
+                            <i class="fas fa-file-invoice-dollar fa-fw me-3"></i> Invoices
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'payments' %}active{% endif %}"
+                            href="{{ url_for('payments') }}">
+                            <i class="fas fa-money-bill-wave fa-fw me-3"></i> Payments
                         </a>
                     </li>
                     <li class="nav-item">

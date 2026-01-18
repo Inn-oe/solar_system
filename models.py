@@ -46,6 +46,14 @@ class quotationstatus(enum.Enum):
     OVERDUE = "OVERDUE"
     CANCELLED = "CANCELLED"
 
+class InvoiceStatus(enum.Enum):
+    DRAFT = "DRAFT"
+    SENT = "SENT"
+    PARTIAL = "PARTIAL"
+    PAID = "PAID"
+    OVERDUE = "OVERDUE"
+    CANCELLED = "CANCELLED"
+
 class TransactionType(enum.Enum):
     STOCK_IN = "STOCK_IN"
     STOCK_OUT = "STOCK_OUT"
@@ -173,6 +181,7 @@ class quotationItem(Base):
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Float, nullable=False)
     description = Column(String(200))
+    item_code = Column(String(50))  # For custom item codes or inventory reference
 
 class StockTransaction(Base):
     __tablename__ = 'stock_transactions'
@@ -295,5 +304,45 @@ class Pricing(Base):
     unit = Column(String(20))
     effective_date = Column(DateTime, default=datetime.utcnow)
     expiry_date = Column(DateTime)
+    notes = Column(String(500))
+    date_created = Column(DateTime, default=datetime.utcnow)
+
+class Invoice(Base):
+    __tablename__ = 'invoices'
+    id = Column(Integer, primary_key=True)
+    customer_id = Column(Integer, ForeignKey('customers.id'))
+    customer = relationship('Customer')
+    quotation_id = Column(Integer, ForeignKey('quotations.id'), nullable=True)
+    quotation = relationship('quotation')
+    total_amount = Column(Float, nullable=False)
+    paid_amount = Column(Float, default=0.0)
+    balance_due = Column(Float, nullable=False)
+    status = Column(Enum(InvoiceStatus), default=InvoiceStatus.DRAFT)
+    due_date = Column(DateTime)
+    notes = Column(String(500))
+    date_created = Column(DateTime, default=datetime.utcnow)
+
+class InvoiceItem(Base):
+    __tablename__ = 'invoice_items'
+    id = Column(Integer, primary_key=True)
+    invoice_id = Column(Integer, ForeignKey('invoices.id'))
+    invoice = relationship('Invoice', backref='items')
+    inventory_id = Column(Integer, ForeignKey('inventory.id'), nullable=True)
+    inventory = relationship('Inventory')
+    item_code = Column(String(50))
+    description = Column(String(200))
+    quantity = Column(Integer, nullable=False)
+    unit_price = Column(Float, nullable=False)
+    amount = Column(Float, nullable=False)
+
+class Payment(Base):
+    __tablename__ = 'payments'
+    id = Column(Integer, primary_key=True)
+    invoice_id = Column(Integer, ForeignKey('invoices.id'))
+    invoice = relationship('Invoice', backref='payments')
+    amount = Column(Float, nullable=False)
+    payment_date = Column(DateTime, default=datetime.utcnow)
+    payment_method = Column(Enum(PaymentType), default=PaymentType.CASH)
+    reference_number = Column(String(100))
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
