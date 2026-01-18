@@ -52,6 +52,7 @@ def normalize_enums():
     except Exception:
         db_session.rollback()
 
+
     # Normalize Inventory.payment_type
     try:
         inventories = db_session.query(Inventory).all()
@@ -66,6 +67,17 @@ def normalize_enums():
             db_session.commit()
     except Exception:
         db_session.rollback()
+
+@app.context_processor
+def inject_db_type():
+    from database import engine
+    db_url = str(engine.url)
+    if 'sqlite' in db_url:
+        return dict(db_type='SQLite (Local/Ephemeral)')
+    elif 'postgres' in db_url:
+        return dict(db_type='PostgreSQL (Persistent)')
+    else:
+        return dict(db_type='Unknown Database')
 
     # Normalize FinancialRecord.payment_method
     try:
