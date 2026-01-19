@@ -224,7 +224,7 @@ def financial():
         FinancialRecord.date < end_date
     ).scalar() or 0
 
-    profit = (total_sales + total_income) - total_expenses
+    profit = (total_sales + total_income) - (total_expenses + abs(cogs))
 
     # Recent transactions
     recent_transactions = db_session.query(FinancialRecord).filter(
@@ -256,9 +256,10 @@ def financial():
 
     # Profit/Loss breakdown
     profit_breakdown = {
-        'Sales': total_sales,
+        'Payments Received': total_sales,
         'Other Income': total_income,
-        'Expenses': -total_expenses
+        'Expenses': -total_expenses,
+        'COGS': -abs(cogs)
     }
 
     # Monthly revenue and expenses for charts
@@ -286,25 +287,23 @@ def financial():
         ).scalar() or 0
         monthly_expenses_data.append(exp)
 
-    # Profit by item (from quotation items)
-    quotation_items = db_session.query(quotationItem).join(quotation).filter(
-        quotation.date_created >= start_date,
-        quotation.date_created < end_date
+    # Profit by item (from invoice items)
+    invoice_items = db_session.query(InvoiceItem).join(Invoice).filter(
+        Invoice.date_created >= start_date,
+        Invoice.date_created < end_date
     ).all()
 
     item_profits = {}
-    for item in quotation_items:
+    for item in invoice_items:
         if item.inventory_id:
             inventory = db_session.query(Inventory).get(item.inventory_id)
             item_name = inventory.name if inventory else "Unknown Item"
+            cost_price = inventory.unit_price if inventory else 0
         else:
             item_name = item.description or "Custom Item"
+            cost_price = item.unit_price * 0.7 # Fallback for custom items
 
-        # Calculate profit (assuming unit_price is selling price, need to get cost price)
-        # For simplicity, using a basic profit calculation - you may need to adjust based on your cost structure
         selling_price = item.unit_price
-        # Assuming cost is 70% of selling price for demonstration - adjust as needed
-        cost_price = selling_price * 0.7
         profit = (selling_price - cost_price) * item.quantity
 
         item_profits[item_name] = item_profits.get(item_name, 0) + profit
@@ -749,9 +748,9 @@ def generate_income_statement(month, year):
         end_date = datetime(year, month + 1, 1)
 
     # Get financial data
-    total_sales = db_session.query(db.func.sum(quotation.total_amount)).filter(
-        quotation.date_created >= start_date,
-        quotation.date_created < end_date
+    total_sales = db_session.query(db.func.sum(Payment.amount)).filter(
+        Payment.payment_date >= start_date,
+        Payment.payment_date < end_date
     ).scalar() or 0
 
     total_expenses = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
@@ -768,8 +767,8 @@ def generate_income_statement(month, year):
 
     cogs = db_session.query(db.func.sum(StockTransaction.total_value)).filter(
         StockTransaction.transaction_type == 'STOCK_OUT',
-        StockTransaction.created_at >= start_date,
-        StockTransaction.created_at < end_date
+        StockTransaction.date_created >= start_date,
+        StockTransaction.date_created < end_date
     ).scalar() or 0
 
     # Create PDF
