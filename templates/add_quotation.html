@@ -38,8 +38,13 @@
                         </div>
                         <div class="col-md-6">
                             <label for="customer_name_display" class="form-label fw-medium">Customer Name</label>
-                            <input type="text" class="form-control bg-light" id="customer_name_display" readonly
-                                placeholder="Name will appear here...">
+                            <input type="text" class="form-control" id="customer_name_display" list="customer-name-list"
+                                placeholder="Start typing Name...">
+                            <datalist id="customer-name-list">
+                                {% for customer in customers %}
+                                <option value="{{ customer.name }}">ID: {{ customer.identification_number }}</option>
+                                {% endfor %}
+                            </datalist>
                         </div>
                     </div>
                 </div>
@@ -52,19 +57,21 @@
                     <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-box-open me-2"></i>quotation Items</h5>
                 </div>
                 <div class="card-body p-4">
+                    <datalist id="all-inventory-list">
+                        {% for item in inventory_items %}
+                        <option value="{{ item.name }}" data-id="{{ item.id }}" data-price="{{ item.unit_price }}">
+                            Stock: {{ item.quantity }}</option>
+                        {% endfor %}
+                        <option value="Create Custom Item"></option>
+                    </datalist>
+
                     <div id="quotation-items">
                         <div class="row quotation-item bg-light rounded-3 p-3 mb-3 border g-3 align-items-end">
-                            <div class="col-md-4">
+                            <div class="col-md-5">
                                 <label class="form-label fw-medium small text-muted">Item Selection</label>
-                                <select class="form-select item-select" name="item_id[]" required
-                                    onchange="updatePrice(this)">
-                                    <option value="">Select Item...</option>
-                                    {% for item in inventory_items %}
-                                    <option value="{{ item.id }}" data-price="{{ item.unit_price }}">{{ item.name }} ({{
-                                        item.quantity }} in stock)</option>
-                                    {% endfor %}
-                                    <option value="custom">Create Custom Item</option>
-                                </select>
+                                <input type="hidden" name="item_id[]" class="item-id">
+                                <input type="text" class="form-control item-search" list="all-inventory-list"
+                                    placeholder="Search item..." required onchange="updateItemFromSearch(this)">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label fw-medium small text-muted">Quantity</label>
@@ -79,7 +86,7 @@
                                         required oninput="calculateItemTotal(this)">
                                 </div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <label class="form-label fw-medium small text-muted">Total</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-white px-2 small text-muted">$</span>
@@ -99,43 +106,43 @@
                                 </button>
                             </div>
                         </div>
-                    </div>
-                    <button type="button"
-                        class="btn btn-light text-primary border-primary border-opacity-25 w-100 py-2 mt-2 border-dashed"
-                        onclick="addItem()">
-                        <i class="fas fa-plus-circle me-2"></i>Add Another Line Item
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-3">
-            <div class="card border-0 shadow-sm position-sticky" style="top: 2rem;">
-                <div class="card-header bg-success bg-opacity-10 py-3">
-                    <h5 class="mb-0 fw-bold text-success">Summary</h5>
-                </div>
-                <div class="card-body p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4 pb-4 border-bottom">
-                        <span class="text-muted">Total Amount</span>
-                        <h3 id="quotation-total" class="mb-0 fw-bold text-dark">$0.00</h3>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-medium small text-muted">quotation Notes</label>
-                        <textarea class="form-control" name="notes" rows="3" placeholder="Optional notes..."></textarea>
-                    </div>
-
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary py-2 fw-medium shadow-sm">
-                            <i class="fas fa-paper-plane me-2"></i>Create quotation
+                        <button type="button"
+                            class="btn btn-light text-primary border-primary border-opacity-25 w-100 py-2 mt-2 border-dashed"
+                            onclick="addItem()">
+                            <i class="fas fa-plus-circle me-2"></i>Add Another Line Item
                         </button>
-                        <a href="{{ url_for('quotations') }}"
-                            class="btn btn-outline-secondary border-0 text-muted">Cancel</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-3">
+                <div class="card border-0 shadow-sm position-sticky" style="top: 2rem;">
+                    <div class="card-header bg-success bg-opacity-10 py-3">
+                        <h5 class="mb-0 fw-bold text-success">Summary</h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-4 pb-4 border-bottom">
+                            <span class="text-muted">Total Amount</span>
+                            <h3 id="quotation-total" class="mb-0 fw-bold text-dark">$0.00</h3>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-medium small text-muted">quotation Notes</label>
+                            <textarea class="form-control" name="notes" rows="3"
+                                placeholder="Optional notes..."></textarea>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary py-2 fw-medium shadow-sm">
+                                <i class="fas fa-paper-plane me-2"></i>Create quotation
+                            </button>
+                            <a href="{{ url_for('quotations') }}"
+                                class="btn btn-outline-secondary border-0 text-muted">Cancel</a>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 </form>
 {% endblock %}
 
@@ -155,13 +162,11 @@
         const itemRow = document.createElement('div');
         itemRow.className = 'row quotation-item bg-light rounded-3 p-3 mb-3 border g-3 align-items-end';
         itemRow.innerHTML = `
-            <div class="col-md-4">
+            <div class="col-md-5">
                 <label class="form-label fw-medium small text-muted">Item Selection</label>
-                <select class="form-select item-select" name="item_id[]" required onchange="updatePrice(this)">
-                    <option value="">Select Item...</option>
-                    ${Object.keys(inventory).map(id => `<option value="${id}" data-price="${inventory[id].price}">${inventory[id].name.replace(/"/g, '&quot;')} (${inventory[id].quantity} in stock)</option>`).join('')}
-                    <option value="custom">Create Custom Item</option>
-                </select>
+                <input type="hidden" name="item_id[]" class="item-id">
+                <input type="text" class="form-control item-search" list="all-inventory-list" 
+                    placeholder="Search item..." required onchange="updateItemFromSearch(this)">
             </div>
             <div class="col-md-2">
                 <label class="form-label fw-medium small text-muted">Quantity</label>
@@ -174,7 +179,7 @@
                     <input type="number" step="0.01" class="form-control unit-price" name="unit_price[]" required oninput="calculateItemTotal(this)">
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label fw-medium small text-muted">Total</label>
                 <div class="input-group">
                     <span class="input-group-text bg-white px-2 small text-muted">$</span>
@@ -206,34 +211,64 @@
         }
     }
 
-    function updatePrice(select) {
-        const selectedValue = select.value;
-        const priceInput = select.closest('.quotation-item').querySelector('.unit-price');
-        const customFields = select.closest('.quotation-item').querySelector('.custom-item-fields');
+    function updateItemFromSearch(input) {
+        const val = input.value;
+        const itemRow = input.closest('.quotation-item');
+        const hiddenIdInput = itemRow.querySelector('.item-id');
+        const priceInput = itemRow.querySelector('.unit-price');
+        const customFields = itemRow.querySelector('.custom-item-fields');
+        const customItemNameInput = itemRow.querySelector('.custom-item-name');
 
-        if (selectedValue === 'custom') {
+        // Find the option in the datalist
+        const datalist = document.getElementById('all-inventory-list');
+        let selectedOption = null;
+        for (let option of datalist.options) {
+            if (option.value === val) {
+                selectedOption = option;
+                break;
+            }
+        }
+
+        if (val === 'Create Custom Item') {
+            // Custom Item Logic
+            hiddenIdInput.value = 'custom';
             priceInput.value = '';
             customFields.style.display = 'block';
+            customItemNameInput.required = true;
             priceInput.required = true;
-        } else {
-            const price = select.options[select.selectedIndex].dataset.price;
+            input.setCustomValidity("");
+        } else if (selectedOption) {
+            // Existing Item Logic
+            const itemId = selectedOption.dataset.id;
+            const price = selectedOption.dataset.price;
+
+            hiddenIdInput.value = itemId;
             priceInput.value = price || '';
+
             customFields.style.display = 'none';
+            customItemNameInput.value = '';
+            customItemNameInput.required = false;
             priceInput.required = true;
+            input.setCustomValidity("");
+        } else {
+            // Invalid selection (text typed but not in list and not 'Create Custom Item')
+            // Optionally clear or set error. For now, strict match or custom.
+            // If the user types a new name, maybe we should assume custom? 
+            // The prompt says "functionality other than that", so let's stick to existing logic.
+            // Existing logic required selection.
+            hiddenIdInput.value = '';
+            priceInput.value = '';
+            input.setCustomValidity("Please select a valid item or 'Create Custom Item'");
         }
-        calculateItemTotal(select);
+        calculateItemTotal(input);
     }
 
-    document.addEventListener('change', function (e) {
-        if (e.target.classList.contains('item-select')) {
-            updatePrice(e.target);
-        }
-    });
-
     document.addEventListener('DOMContentLoaded', function () {
-        const customerInput = document.getElementById('customer_identification');
-        if (customerInput) {
-            customerInput.addEventListener('input', function () {
+        const customerIdInput = document.getElementById('customer_identification');
+        const customerNameInput = document.getElementById('customer_name_display');
+
+        if (customerIdInput) {
+            customerIdInput.addEventListener('input', function () {
                 const inputValue = this.value;
                 const datalist = document.getElementById('customer-list');
                 const options = datalist.options;
@@ -241,13 +276,47 @@
 
                 for (let i = 0; i < options.length; i++) {
                     if (options[i].value === inputValue) {
+                        // Option format: "Name - ID" (text content), Value is ID
+                        // We extract name from text content
                         customerName = options[i].textContent.split(' - ')[0];
                         break;
                     }
                 }
 
-                document.getElementById('customer_name_display').value = customerName;
+                // Only update if we found a match to avoid clearing while typing incomplete IDs
+                if (customerName) {
+                    customerNameInput.value = customerName;
+                }
             });
+        }
+
+        if (customerNameInput) {
+            customerNameInput.addEventListener('input', function () {
+                const inputValue = this.value;
+                const datalist = document.getElementById('customer-name-list');
+                const options = datalist.options;
+                let customerId = '';
+
+                for (let i = 0; i < options.length; i++) {
+                    if (options[i].value === inputValue) {
+                        // Option format: "ID: 123" (text content), Value is Name
+                        // We extract ID from text content
+                        customerId = options[i].textContent.replace('ID: ', '').trim();
+                        break;
+                    }
+                }
+
+                if (customerId) {
+                    customerIdInput.value = customerId;
+                }
+            });
+        }
+    });
+
+    document.addEventListener('change', function (e) {
+        if (e.target.classList.contains('item-select')) {
+            // Legacy support if needed, but we are replacing it.
+            // updatePrice(e.target); 
         }
     });
 

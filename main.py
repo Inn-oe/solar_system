@@ -172,8 +172,10 @@ def inventory():
     items = query.all()
     categories = db_session.query(Inventory.category).distinct().all()
     categories = [cat[0] for cat in categories if cat[0]]
+    suppliers = db_session.query(Supplier).all()
 
-    return render_template('inventory.html', items=items, categories=categories, search=search, selected_category=category)
+    return render_template('inventory.html', items=items, categories=categories, 
+                           search=search, selected_category=category, suppliers=suppliers)
 
 @app.route('/quotations')
 def quotations():
@@ -456,6 +458,30 @@ def add_inventory():
         return redirect(url_for('inventory'))
     suppliers = db_session.query(Supplier).all()
     return render_template('add_inventory.html', suppliers=suppliers)
+
+@app.route('/inventory/edit/<int:inventory_id>', methods=['GET', 'POST'])
+def edit_inventory(inventory_id):
+    """Edit inventory item"""
+    item = db_session.query(Inventory).get(inventory_id)
+    if not item:
+        flash('Inventory item not found!', 'error')
+        return redirect(url_for('inventory'))
+    
+    if request.method == 'POST':
+        item.name = request.form['name']
+        item.brand = request.form['brand']
+        item.category = request.form['category']
+        item.specifications = request.form['specifications']
+        item.quantity = int(request.form['quantity'])
+        item.unit_price = float(request.form['unit_price'])
+        item.supplier_id = int(request.form['supplier_id']) if request.form['supplier_id'] else None
+        
+        db_session.commit()
+        flash('Inventory item updated successfully!', 'success')
+        return redirect(url_for('inventory'))
+    
+    suppliers = db_session.query(Supplier).all()
+    return render_template('edit_inventory.html', item=item, suppliers=suppliers)
 
 @app.route('/quotations/add', methods=['GET', 'POST'])
 def add_quotation():
@@ -1180,18 +1206,97 @@ def delete_inventory(inventory_id):
 @app.route('/quotations/delete/<int:quotation_id>', methods=['POST'])
 def delete_quotation(quotation_id):
     """Delete quotation"""
-    quotation = db_session.query(quotation).get(quotation_id)
-    if quotation:
-        # Restore inventory quantities
-        for item in quotation.items:
-            if item.inventory:
-                item.inventory.quantity += item.quantity
-        db_session.delete(quotation)
+    quotation_obj = db_session.query(quotation).get(quotation_id)
+    if quotation_obj:
+        # Note: Quotations do NOT deduct stock, so we do NOT restore stock here.
+        db_session.delete(quotation_obj)
         db_session.commit()
         flash('quotation deleted successfully!', 'success')
     else:
         flash('quotation not found!', 'error')
     return redirect(url_for('quotations'))
+
+@app.route('/invoices/delete/<int:invoice_id>', methods=['POST'])
+def delete_invoice(invoice_id):
+    """Delete invoice and restore stock"""
+    invoice = db_session.query(Invoice).get(invoice_id)
+    if not invoice:
+        flash('Invoice not found!', 'error')
+        return redirect(url_for('invoices'))
+
+    try:
+        # Restore inventory quantities
+        for item in invoice.items:
+            if item.inventory_id and item.inventory:
+                # Add stock back
+                item.inventory.quantity += item.quantity
+                
+                # Record stock transaction for return
+                from models import StockChangeReason, TransactionType
+                stock_transaction = StockTransaction(
+                    inventory_id=item.inventory_id,
+                    transaction_type=TransactionType.STOCK_IN,
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    total_value=item.quantity * item.unit_price,
+                    reason=StockChangeReason.RETURNED, 
+                    reference_id=invoice.id,
+                    reference_type='invoice_deletion',
+                    notes=f'Restored from deleted Invoice #{invoice.id}'
+                )
+                db_session.add(stock_transaction)
+
+        # Delete associated payments (cascade manually if needed, but relationship cascade might handle rows, logic should handle stats)
+        # SQLAlchemy relationship cascade options could handle this, but explicit is safe.
+        for payment in invoice.payments:
+             db_session.delete(payment)
+        
+        # Delete invoice items (cascade usually handles this, but explicit loop needed for stock above)
+        for item in invoice.items:
+             db_session.delete(item)
+
+        db_session.delete(invoice)
+        db_session.commit()
+        flash('Invoice deleted successfully and stock restored!', 'success')
+
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error deleting invoice: {str(e)}', 'error')
+
+    return redirect(url_for('invoices'))
+
+@app.route('/payments/delete/<int:payment_id>', methods=['POST'])
+def delete_payment(payment_id):
+    """Delete payment and update invoice balance"""
+    payment = db_session.query(Payment).get(payment_id)
+    if not payment:
+        flash('Payment not found!', 'error')
+        return redirect(url_for('payments'))
+
+    try:
+        invoice = payment.invoice
+        if invoice:
+            # Revert invoice stats
+            invoice.paid_amount -= payment.amount
+            invoice.balance_due += payment.amount
+            
+            from models import InvoiceStatus
+            if invoice.balance_due == invoice.total_amount:
+                invoice.status = InvoiceStatus.SENT # Or DRAFT
+            elif invoice.balance_due > 0:
+                invoice.status = InvoiceStatus.PARTIAL
+            else:
+                invoice.status = InvoiceStatus.PAID # Should not happen if we are adding balance
+
+        db_session.delete(payment)
+        db_session.commit()
+        flash('Payment deleted successfully!', 'success')
+    
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error deleting payment: {str(e)}', 'error')
+
+    return redirect(url_for('payments'))
 
 @app.route('/activities/delete/<int:activity_id>', methods=['POST'])
 def delete_activity(activity_id):
@@ -1232,8 +1337,8 @@ def delete_financial_category(category_id):
 @app.route('/quotation/<int:quotation_id>')
 def view_quotation(quotation_id):
     """View an quotation as an HTML page"""
-    quotation = db_session.query(quotation).get(quotation_id)
-    if not quotation:
+    quotation_obj = db_session.query(quotation).get(quotation_id)
+    if not quotation_obj:
         from flask import abort
         abort(404)
     quotation_items = db_session.query(quotationItem).filter_by(quotation_id=quotation_id).all()
@@ -1242,13 +1347,13 @@ def view_quotation(quotation_id):
     for item in quotation_items:
         total_quantity += item.quantity
 
-    return render_template('view_quotation.html', quotation=quotation, quotation_items=quotation_items, total_quantity=total_quantity)
+    return render_template('view_quotation.html', quotation=quotation_obj, quotation_items=quotation_items, total_quantity=total_quantity)
 
 @app.route('/quotation/<int:quotation_id>/pdf')
 def generate_quotation_pdf(quotation_id):
     """Generate PDF quotation"""
-    quotation = db_session.query(quotation).get(quotation_id)
-    if not quotation:
+    quotation_obj = db_session.query(quotation).get(quotation_id)
+    if not quotation_obj:
         from flask import abort
         abort(404)
     quotation_items = db_session.query(quotationItem).filter_by(quotation_id=quotation_id).all()
@@ -1325,9 +1430,9 @@ def generate_quotation_pdf(quotation_id):
         spaceAfter=8
     )
     story.append(Paragraph('Quotation', quotation_style))
-    story.append(Paragraph(f'SAL-QTN-2025-{quotation.id:05d}', styles['Normal']))
+    story.append(Paragraph(f'SAL-QTN-2025-{quotation_obj.id:05d}', styles['Normal']))
     story.append(Spacer(1, 0.2*inch))
-
+ 
     # Customer Name and Date aligned
     customer_date_style = ParagraphStyle(
         'customer_date_style',
@@ -1336,10 +1441,10 @@ def generate_quotation_pdf(quotation_id):
         alignment=0,  # Left alignment
         spaceAfter=10
     )
-    story.append(Paragraph(f"<b>Customer:</b> {quotation.customer.name}", customer_date_style))
-    story.append(Paragraph(f"<b>Date:</b> {quotation.date_created.strftime('%d-%m-%Y')}", customer_date_style))
+    story.append(Paragraph(f"<b>Customer:</b> {quotation_obj.customer.name}", customer_date_style))
+    story.append(Paragraph(f"<b>Date:</b> {quotation_obj.date_created.strftime('%d-%m-%Y')}", customer_date_style))
     story.append(Spacer(1, 0.2*inch))
-
+ 
     # Items Table
     items_data = [['Sr', 'Item Code', 'Description', 'Quantity', 'Price', 'Total Amount']]
     total_quantity = 0
@@ -1363,14 +1468,14 @@ def generate_quotation_pdf(quotation_id):
             f"${price:,.2f}",
             f"${amount:,.2f}"
         ])
-
+ 
     items_table = Table(items_data, colWidths=[0.4*inch, 1*inch, 3.1*inch, 0.7*inch, 1*inch, 1.3*inch])
     items_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('TOPPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
@@ -1383,7 +1488,7 @@ def generate_quotation_pdf(quotation_id):
     story.append(Spacer(1, 0.2*inch))
     # Total
     total_data = [
-        ['', '', '', '', '', f"Net Price ${quotation.total_amount:,.2f}"]
+        ['', '', '', '', '', f"Net Price ${quotation_obj.total_amount:,.2f}"]
     ]
     total_table = Table(total_data, colWidths=[0.4*inch, 1*inch, 3.1*inch, 0.7*inch, 1*inch, 1.3*inch])
     total_table.setStyle(TableStyle([
@@ -1392,7 +1497,7 @@ def generate_quotation_pdf(quotation_id):
     ]))
     story.append(total_table)
     story.append(Spacer(1, 0.4*inch))
-
+ 
     # Banking Details
     banking_details_style = ParagraphStyle(
         'banking_details_style',
@@ -1408,11 +1513,11 @@ def generate_quotation_pdf(quotation_id):
     Branch: Chisipite<br/>
     """
     story.append(Paragraph(banking_info, styles['Normal']))
-
+ 
     doc.build(story)
     buffer.seek(0)
-
-    return send_file(buffer, as_attachment=True, download_name=f'quotation_{quotation.id}.pdf', mimetype='application/pdf')
+ 
+    return send_file(buffer, as_attachment=True, download_name=f'quotation_{quotation_obj.id}.pdf', mimetype='application/pdf')
 
 @app.route('/invoices')
 def invoices():
@@ -1540,7 +1645,8 @@ def add_invoice():
 
     customers = db_session.query(Customer).all()
     inventory_items = db_session.query(Inventory).filter(Inventory.quantity > 0).all()
-    return render_template('add_invoice.html', customers=customers, inventory_items=inventory_items)
+    quotations = db_session.query(quotation).all()
+    return render_template('add_invoice.html', customers=customers, inventory_items=inventory_items, quotations=quotations)
 
 @app.route('/quotations/<int:quotation_id>/convert', methods=['POST'])
 def convert_to_invoice(quotation_id):
@@ -2026,6 +2132,14 @@ def check_db_schema():
                 conn.execute(text("ALTER TABLE payments ADD COLUMN payer_name VARCHAR(100)"))
                 conn.commit()
                 print("Added column 'payer_name' to 'payments'")
+            except Exception:
+                pass
+            
+            # Check for quotation_id in invoices
+            try:
+                conn.execute(text("ALTER TABLE invoices ADD COLUMN quotation_id INTEGER REFERENCES quotations(id)"))
+                conn.commit()
+                print("Added column 'quotation_id' to 'invoices'")
             except Exception:
                 pass
     except Exception as e:

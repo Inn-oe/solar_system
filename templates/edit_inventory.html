@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Inventory Item - Giebee Engineering{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
+    <h1 class="h2">Edit Inventory Item</h1>
+    <a href="{{ url_for('inventory') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Inventory
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="name" class="form-label">Item Name *</label>
+                            <input type="text" class="form-control" id="name" name="name" value="{{ item.name }}"
+                                required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="brand" class="form-label">Brand</label>
+                            <input type="text" class="form-control" id="brand" name="brand"
+                                value="{{ item.brand or '' }}">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="category" class="form-label">Category *</label>
+                            <select class="form-select" id="category" name="category" required>
+                                <option value="">Select Category</option>
+                                <option value="Solar Panel" {% if item.category=='Solar Panel' %}selected{% endif %}>
+                                    Solar Panel</option>
+                                <option value="Battery" {% if item.category=='Battery' %}selected{% endif %}>Battery
+                                </option>
+                                <option value="Inverter" {% if item.category=='Inverter' %}selected{% endif %}>Inverter
+                                </option>
+                                <option value="CCTV" {% if item.category=='CCTV' %}selected{% endif %}>CCTV</option>
+                                <option value="Geyser" {% if item.category=='Geyser' %}selected{% endif %}>Geyser
+                                </option>
+                                <option value="Alarm System" {% if item.category=='Alarm System' %}selected{% endif %}>
+                                    Alarm System</option>
+                                <option value="Borehole Equipment" {% if item.category=='Borehole Equipment'
+                                    %}selected{% endif %}>Borehole Equipment</option>
+                                <option value="Electrical Appliances" {% if item.category=='Electrical Appliances'
+                                    %}selected{% endif %}>Electrical Appliances</option>
+                                <option value="Other" {% if item.category=='Other' %}selected{% endif %}>Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="specifications" class="form-label">Specifications</label>
+                            <input type="text" class="form-control" id="specifications" name="specifications"
+                                value="{{ item.specifications or '' }}">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="quantity" class="form-label">Quantity *</label>
+                            <input type="number" class="form-control" id="quantity" name="quantity"
+                                value="{{ item.quantity }}" required min="0">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="unit_price" class="form-label">Unit Price *</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" step="0.01" class="form-control" id="unit_price" name="unit_price"
+                                    value="{{ item.unit_price }}" required min="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="supplier_id" class="form-label">Supplier</label>
+                        <select class="form-select" id="supplier_id" name="supplier_id">
+                            <option value="">Select Supplier</option>
+                            {% for supplier in suppliers %}
+                            <option value="{{ supplier.id }}" {% if item.supplier_id==supplier.id %}selected{% endif %}>
+                                {{ supplier.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">Update Item</button>
+                        <a href="{{ url_for('inventory') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

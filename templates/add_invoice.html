@@ -10,86 +10,124 @@
     </a>
 </div>
 
-<div class="card">
-    <div class="card-body">
+<div class="card bg-transparent border-0">
+    <div class="card-body p-0">
         <form method="POST" action="{{ url_for('add_invoice') }}">
-            <div class="mb-4">
-                <label for="customer_identification" class="form-label">Customer Search (ID Number)</label>
-                <input type="text" class="form-control" id="customer_identification" name="customer_identification"
-                    required list="customer_list" placeholder="Enter ID Number to search">
-                <datalist id="customer_list">
-                    {% for customer in customers %}
-                    <option value="{{ customer.identification_number }}">{{ customer.name }} ({{
-                        customer.identification_number }})</option>
-                    {% endfor %}
-                </datalist>
-                <div class="form-text">Search by Customer ID Number</div>
-            </div>
-
-            <h4 class="mb-3">Items</h4>
-            <div class="table-responsive mb-3">
-                <table class="table table-bordered" id="itemsTable">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Quantity</th>
-                            <th>Unit Price</th>
-                            <th>Total</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="itemsBody">
-                        <tr>
-                            <td>
-                                <select class="form-select item-select" name="item_id[]"
-                                    onchange="handleItemChange(this)" required>
-                                    <option value="">Select Item...</option>
-                                    <option value="custom">+ Custom Item</option>
-                                    {% for item in inventory_items %}
-                                    <option value="{{ item.id }}" data-price="{{ item.unit_price }}"
-                                        data-stock="{{ item.quantity }}">
-                                        {{ item.name }} (Stock: {{ item.quantity }})
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                                <input type="text" class="form-control mt-2 custom-item-name" name="custom_item_name[]"
-                                    placeholder="Enter Item Name" style="display: none;">
-                            </td>
-                            <td>
-                                <input type="number" class="form-control quantity-input" name="quantity[]" value="1"
-                                    min="1" required onchange="calculateRowTotal(this)">
-                            </td>
-                            <td>
-                                <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <input type="number" class="form-control price-input" name="unit_price[]"
-                                        step="0.01" required onchange="calculateRowTotal(this)">
-                                </div>
-                            </td>
-                            <td>
-                                <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <input type="text" class="form-control total-input" readonly>
-                                </div>
-                            </td>
-                            <td>
-                                <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <button type="button" class="btn btn-secondary" onclick="addRow()">
-                        <i class="fas fa-plus me-2"></i>Add Item
-                    </button>
+            <!-- Customer Section -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent border-bottom-0 pt-4 px-4 pb-0">
+                    <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-user-circle me-2"></i>Customer Details</h5>
                 </div>
-                <div class="col-md-6 text-end">
-                    <h4>Total Amount: $<span id="grandTotal">0.00</span></h4>
+                <div class="card-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="customer_identification" class="form-label fw-medium">Identification Number
+                                <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="customer_identification"
+                                name="customer_identification" required list="customer-list-quotes"
+                                placeholder="Start typing ID number...">
+                            <datalist id="customer-list-quotes">
+                                {% for quote in quotations %}
+                                {% if quote.customer %}
+                                <option value="{{ quote.customer.identification_number }}">{{ quote.customer.name }}
+                                    (Quote #{{ quote.id }})</option>
+                                {% endif %}
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="customer_name_display" class="form-label fw-medium">Customer Name</label>
+                            <input type="text" class="form-control" id="customer_name_display"
+                                list="customer-name-list-quotes" placeholder="Start typing Name...">
+                            <datalist id="customer-name-list-quotes">
+                                {% for quote in quotations %}
+                                {% if quote.customer %}
+                                <option value="{{ quote.customer.name }}">ID: {{ quote.customer.identification_number }}
+                                    (Quote #{{ quote.id }})</option>
+                                {% endif %}
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Items Section -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent border-bottom-0 pt-4 px-4 pb-0">
+                    <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-box-open me-2"></i>Invoice Items</h5>
+                </div>
+                <div class="card-body p-4">
+                    <!-- Item Datalist -->
+                    <datalist id="invoice-inventory-list">
+                        {% for item in inventory_items %}
+                        <option value="{{ item.name }}" data-id="{{ item.id }}" data-price="{{ item.unit_price }}">
+                            Stock: {{ item.quantity }}</option>
+                        {% endfor %}
+                        <option value="Create Custom Item"></option>
+                    </datalist>
+
+                    <div class="table-responsive mb-3">
+                        <table class="table table-bordered" id="itemsTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40%;">Item</th>
+                                    <th style="width: 15%;">Quantity</th>
+                                    <th style="width: 20%;">Unit Price</th>
+                                    <th style="width: 20%;">Total</th>
+                                    <th style="width: 5%;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemsBody">
+                                <tr>
+                                    <td>
+                                        <input type="hidden" name="item_id[]" class="item-id">
+                                        <input type="text" class="form-control item-search"
+                                            list="invoice-inventory-list"
+                                            placeholder="Search item or type 'Create Custom Item'..." required
+                                            onchange="updateItemFromSearch(this)">
+
+                                        <input type="text" class="form-control mt-2 custom-item-name"
+                                            name="custom_item_name[]" placeholder="Enter Item Name"
+                                            style="display: none;">
+                                    </td>
+                                    <td>
+                                        <input type="number" class="form-control quantity-input" name="quantity[]"
+                                            value="1" min="1" required oninput="calculateRowTotal(this)">
+                                    </td>
+                                    <td>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control price-input" name="unit_price[]"
+                                                step="0.01" required oninput="calculateRowTotal(this)">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="text" class="form-control total-input" readonly value="0.00">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-secondary" onclick="addRow()">
+                                <i class="fas fa-plus me-2"></i>Add Item
+                            </button>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <h4>Total Amount: $<span id="grandTotal">0.00</span></h4>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -101,28 +139,90 @@
 </div>
 
 <script>
-    function handleItemChange(select) {
-        const row = select.closest('tr');
-        const customInput = row.querySelector('.custom-item-name');
-        const priceInput = row.querySelector('.price-input');
+    document.addEventListener('DOMContentLoaded', function () {
+        const customerIdInput = document.getElementById('customer_identification');
+        const customerNameInput = document.getElementById('customer_name_display');
 
-        if (select.value === 'custom') {
+        if (customerIdInput) {
+            customerIdInput.addEventListener('input', function () {
+                const inputValue = this.value;
+                const datalist = document.getElementById('customer-list-quotes');
+                const options = datalist.options;
+                let customerName = '';
+
+                for (let i = 0; i < options.length; i++) {
+                    if (options[i].value === inputValue) {
+                        const text = options[i].textContent;
+                        customerName = text.split(' (Quote #')[0].trim();
+                        break;
+                    }
+                }
+                if (customerName) {
+                    customerNameInput.value = customerName;
+                }
+            });
+        }
+
+        if (customerNameInput) {
+            customerNameInput.addEventListener('input', function () {
+                const inputValue = this.value;
+                const datalist = document.getElementById('customer-name-list-quotes');
+                const options = datalist.options;
+                let customerId = '';
+
+                for (let i = 0; i < options.length; i++) {
+                    if (options[i].value === inputValue) {
+                        const text = options[i].textContent;
+                        // Extract ID from format: ID: XXXXX (Quote #...)
+                        const match = text.match(/ID:\s*([^\s(]*)/);
+                        if (match && match[1]) {
+                            customerId = match[1].trim();
+                        }
+                        break;
+                    }
+                }
+                if (customerId) {
+                    customerIdInput.value = customerId;
+                }
+            });
+        }
+    });
+
+    function updateItemFromSearch(input) {
+        const val = input.value;
+        const row = input.closest('tr');
+        const hiddenIdInput = row.querySelector('.item-id');
+        const priceInput = row.querySelector('.price-input');
+        const customInput = row.querySelector('.custom-item-name');
+
+        const datalist = document.getElementById('invoice-inventory-list');
+        let selectedOption = null;
+        for (let option of datalist.options) {
+            if (option.value === val) {
+                selectedOption = option;
+                break;
+            }
+        }
+
+        if (val === 'Create Custom Item') {
+            hiddenIdInput.value = 'custom';
+            priceInput.value = '';
             customInput.style.display = 'block';
             customInput.required = true;
-            priceInput.value = '';
-            priceInput.readOnly = false;
-        } else if (select.value) {
+            input.setCustomValidity("");
+        } else if (selectedOption) {
+            hiddenIdInput.value = selectedOption.dataset.id;
+            priceInput.value = selectedOption.dataset.price;
             customInput.style.display = 'none';
             customInput.required = false;
-            const option = select.options[select.selectedIndex];
-            priceInput.value = option.dataset.price;
-            // priceInput.readOnly = true; // Allow editing price if needed
+            customInput.value = '';
+            input.setCustomValidity("");
         } else {
-            customInput.style.display = 'none';
-            customInput.required = false;
+            hiddenIdInput.value = '';
             priceInput.value = '';
+            input.setCustomValidity("Please select a valid item or 'Create Custom Item'");
         }
-        calculateRowTotal(select);
+        calculateRowTotal(input);
     }
 
     function calculateRowTotal(element) {
@@ -144,15 +244,41 @@
 
     function addRow() {
         const tbody = document.getElementById('itemsBody');
-        const newRow = tbody.firstElementChild.cloneNode(true);
+        const firstRow = tbody.querySelector('tr');
+        const newRow = document.createElement('tr');
 
-        // Reset values
-        newRow.querySelector('select').value = '';
-        newRow.querySelector('.custom-item-name').style.display = 'none';
-        newRow.querySelector('.custom-item-name').value = '';
-        newRow.querySelector('.quantity-input').value = '1';
-        newRow.querySelector('.price-input').value = '';
-        newRow.querySelector('.total-input').value = '';
+        newRow.innerHTML = `
+            <td>
+                <input type="hidden" name="item_id[]" class="item-id">
+                <input type="text" class="form-control item-search" list="invoice-inventory-list"
+                    placeholder="Search item..." required onchange="updateItemFromSearch(this)">
+                <input type="text" class="form-control mt-2 custom-item-name"
+                    name="custom_item_name[]" placeholder="Enter Item Name"
+                    style="display: none;">
+            </td>
+            <td>
+                <input type="number" class="form-control quantity-input" name="quantity[]"
+                    value="1" min="1" required oninput="calculateRowTotal(this)">
+            </td>
+            <td>
+                <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control price-input" name="unit_price[]"
+                        step="0.01" required oninput="calculateRowTotal(this)">
+                </div>
+            </td>
+            <td>
+                <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="text" class="form-control total-input" readonly value="0.00">
+                </div>
+            </td>
+            <td>
+                <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        `;
 
         tbody.appendChild(newRow);
     }

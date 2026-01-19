@@ -42,6 +42,17 @@
                         <td class="text-end">
                             <a href="{{ url_for('view_quotation', quotation_id=quotation.id) }}"
                                 class="btn btn-sm btn-outline-primary me-1"><i class="fas fa-eye"></i></a>
+                            {% if quotation.status != 'PAID' and quotation.status != 'CANCELLED' and quotation.status !=
+                            'PROCESSED' %}
+                            <form action="{{ url_for('convert_to_invoice', quotation_id=quotation.id) }}" method="POST"
+                                class="d-inline"
+                                onsubmit="return confirm('Convert this quotation to an invoice? This will deduct stock.');">
+                                <button type="submit" class="btn btn-sm btn-outline-success me-1"
+                                    title="Convert to Invoice">
+                                    <i class="fas fa-file-invoice-dollar"></i>
+                                </button>
+                            </form>
+                            {% endif %}
                             <a href="{{ url_for('generate_quotation_pdf', quotation_id=quotation.id) }}"
                                 class="btn btn-sm btn-outline-secondary me-1"><i class="fas fa-print"></i></a>
                             <form method="POST" action="{{ url_for('delete_quotation', quotation_id=quotation.id) }}"
