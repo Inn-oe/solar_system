@@ -29,13 +29,15 @@
                 <tbody>
                     {% for payment in payments %}
                     <tr>
-                        <td>{{ payment.payment_date.strftime('%Y-%m-%d') }}</td>
-                        <td>{{ payment.invoice.customer.name }}</td>
+                        <td>{{ payment.payment_date.strftime('%Y-%m-%d') if payment.payment_date else 'N/A' }}</td>
+                        <td>{{ payment.invoice.customer.name if payment.invoice and payment.invoice.customer else
+                            'Unknown' }}</td>
                         <td>{{ payment.payer_name or '-' }}</td>
                         <td><a href="{{ url_for('view_invoice', invoice_id=payment.invoice_id) }}">#{{
                                 payment.invoice_id }}</a></td>
                         <td>${{ "%.2f"|format(payment.amount) }}</td>
-                        <td>{{ payment.payment_method.value }}</td>
+                        <td>{{ payment.payment_method.value if payment.payment_method and
+                            hasattr(payment.payment_method, 'value') else payment.payment_method or '-' }}</td>
                         <td>{{ payment.reference_number or '-' }}</td>
 
                         <td>

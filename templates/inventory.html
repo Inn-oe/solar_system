@@ -68,7 +68,8 @@
                 </thead>
                 <tbody>
                     {% for item in items %}
-                    <tr class="{% if item.quantity <= item.minimum_stock_level %}bg-warning bg-opacity-10{% endif %}">
+                    <tr
+                        class="{% if item.quantity <= (item.minimum_stock_level or 0) %}bg-warning bg-opacity-10{% endif %}">
                         <td class="ps-4">
                             <div class="fw-medium text-dark">{{ item.name }}</div>
                             <small class="text-muted">{{ item.brand or '' }}</small>
@@ -77,7 +78,7 @@
                         </td>
                         <td class="text-center">
                             <span
-                                class="badge fs-6 rounded-pill {% if item.quantity <= item.minimum_stock_level %}bg-warning text-dark{% else %}bg-success bg-opacity-75{% endif %} px-3">
+                                class="badge fs-6 rounded-pill {% if item.quantity <= (item.minimum_stock_level or 0) %}bg-warning text-dark{% else %}bg-success bg-opacity-75{% endif %} px-3">
                                 {{ item.quantity }}
                             </span>
                         </td>
@@ -95,7 +96,8 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
-                            {% if item.quantity <= item.minimum_stock_level %} <span class="badge bg-warning text-dark">
+                            {% if item.quantity <= (item.minimum_stock_level or 0) %} <span
+                                class="badge bg-warning text-dark">
                                 <i class="fas fa-exclamation-triangle me-1"></i>Low Stock</span>
                                 {% else %}
                                 <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>In Stock</span>

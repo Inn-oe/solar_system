@@ -29,18 +29,19 @@
                     {% for invoice in invoices %}
                     <tr>
                         <td><strong>#{{ invoice.id }}</strong></td>
-                        <td>{{ invoice.customer.name }}</td>
+                        <td>{{ invoice.customer.name if invoice.customer else 'Unknown' }}</td>
                         <td>{{ invoice.date_created.strftime('%Y-%m-%d') }}</td>
                         <td>
                             <span class="badge 
-                                {% if invoice.status.value == 'DRAFT' %}bg-secondary
-                                {% elif invoice.status.value == 'SENT' %}bg-info
-                                {% elif invoice.status.value == 'PARTIAL' %}bg-warning
-                                {% elif invoice.status.value == 'PAID' %}bg-success
-                                {% elif invoice.status.value == 'OVERDUE' %}bg-danger
-                                {% elif invoice.status.value == 'CANCELLED' %}bg-dark
+                                {% if invoice.status and invoice.status.value == 'DRAFT' %}bg-secondary
+                                {% elif invoice.status and invoice.status.value == 'SENT' %}bg-info
+                                {% elif invoice.status and invoice.status.value == 'PARTIAL' %}bg-warning
+                                {% elif invoice.status and invoice.status.value == 'PAID' %}bg-success
+                                {% elif invoice.status and invoice.status.value == 'OVERDUE' %}bg-danger
+                                {% elif invoice.status and invoice.status.value == 'CANCELLED' %}bg-dark
                                 {% else %}bg-secondary{% endif %}">
-                                {{ invoice.status.value }}
+                                {{ invoice.status.value if invoice.status and hasattr(invoice.status, 'value') else
+                                invoice.status }}
                             </span>
                         </td>
                         <td>${{ "%.2f"|format(invoice.total_amount) }}</td>
