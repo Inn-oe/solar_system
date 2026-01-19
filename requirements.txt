@@ -75,3 +75,4 @@ whitenoise==6.7.0
     # via giebee-engineering-erp (pyproject.toml)
 wtforms==3.2.1
     # via flask-wtf
+python-dotenv==1.0.1
