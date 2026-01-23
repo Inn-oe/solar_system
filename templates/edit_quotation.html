@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Create quotation - Giebee Engineering{% endblock %}
+{% block title %}Edit quotation - Giebee Engineering{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h1 class="h2 fw-bold text-dark mb-1">Create quotation</h1>
-        <p class="text-muted mb-0">Generate a new quotation for a customer</p>
+        <h1 class="h2 fw-bold text-dark mb-1">Edit quotation #{{ quotation.id }}</h1>
+        <p class="text-muted mb-0">Update quotation details for customer</p>
     </div>
     <a href="{{ url_for('quotations') }}" class="btn btn-light border text-muted hover-dark">
         <i class="fas fa-arrow-left me-2"></i>Back to List
@@ -28,7 +28,7 @@
                                 <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="customer_identification"
                                 name="customer_identification" required list="customer-list"
-                                placeholder="Start typing ID number...">
+                                placeholder="Start typing ID number..." value="{{ quotation.customer_id }}">
                             <datalist id="customer-list">
                                 {% for customer in customers %}
                                 <option value="{{ customer.identification_number }}">{{ customer.name }} {{
@@ -40,7 +40,7 @@
                         <div class="col-md-6">
                             <label for="customer_name_display" class="form-label fw-medium">Customer Name</label>
                             <input type="text" class="form-control" id="customer_name_display" list="customer-name-list"
-                                placeholder="Start typing Name...">
+                                placeholder="Start typing Name..." value="{{ quotation.customer.name }}">
                             <datalist id="customer-name-list">
                                 {% for customer in customers %}
                                 <option value="{{ customer.name }} {{ customer.surname or '' }}">ID: {{
@@ -68,25 +68,28 @@
                     </datalist>
 
                     <div id="quotation-items">
+                        {% for item in quotation.items %}
                         <div class="row quotation-item bg-light rounded-3 p-3 mb-3 border g-3 align-items-end">
                             <div class="col-md-5">
                                 <label class="form-label fw-medium small text-muted">Item Selection</label>
-                                <input type="hidden" name="item_id[]" class="item-id">
+                                <input type="hidden" name="item_id[]" class="item-id"
+                                    value="{{ item.inventory_id or 'custom' }}">
                                 <input type="text" class="form-control item-search" name="item_search[]"
                                     list="all-inventory-list" placeholder="Search item or type new item name..."
-                                    required onchange="updateItemFromSearch(this)">
+                                    required onchange="updateItemFromSearch(this)"
+                                    value="{{ item.inventory.name if item.inventory else (item.description if item.inventory_id is none else item.item_code) }}">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label fw-medium small text-muted">Quantity</label>
-                                <input type="number" class="form-control" name="quantity[]" min="1" value="1" required
-                                    oninput="calculateItemTotal(this)">
+                                <input type="number" class="form-control" name="quantity[]" min="1"
+                                    value="{{ item.quantity }}" required oninput="calculateItemTotal(this)">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label fw-medium small text-muted">Unit Price</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-white px-2 small text-muted">$</span>
                                     <input type="number" step="0.01" class="form-control unit-price" name="unit_price[]"
-                                        required oninput="calculateItemTotal(this)">
+                                        required oninput="calculateItemTotal(this)" value="{{ item.unit_price }}">
                                 </div>
                             </div>
                             <div class="col-md-2">
@@ -94,13 +97,15 @@
                                 <div class="input-group">
                                     <span class="input-group-text bg-white px-2 small text-muted">$</span>
                                     <input type="text" class="form-control item-total fw-bold text-dark bg-white"
-                                        readonly value="0.00">
+                                        readonly value="{{ '%.2f'|format(item.quantity * item.unit_price) }}">
                                 </div>
                             </div>
-                            <div class="col-12 custom-item-fields mt-3" style="display: none;">
+                            <div class="col-12 custom-item-fields mt-3"
+                                style="display: {{ 'block' if item.inventory_id is none else 'none' }};">
                                 <label class="form-label fw-medium small text-muted">Item Description</label>
                                 <input type="text" class="form-control custom-item-name" name="custom_item_name[]"
-                                    placeholder="Enter custom item name or description">
+                                    placeholder="Enter custom item name or description"
+                                    value="{{ item.description if item.inventory_id is none else '' }}">
                             </div>
                             <div class="col-md-1 text-end">
                                 <button type="button" class="btn btn-outline-danger btn-sm border-0"
@@ -109,6 +114,7 @@
                                 </button>
                             </div>
                         </div>
+                        {% endfor %}
                     </div>
                     <button type="button"
                         class="btn btn-light text-primary border-primary border-opacity-25 w-100 py-2 mt-2 border-dashed"
@@ -117,35 +123,37 @@
                     </button>
                 </div>
             </div>
+        </div>
 
-            <div class="col-lg-3">
-                <div class="card border-0 shadow-sm position-sticky" style="top: 2rem;">
-                    <div class="card-header bg-success bg-opacity-10 py-3">
-                        <h5 class="mb-0 fw-bold text-success">Summary</h5>
+        <div class="col-lg-3">
+            <div class="card border-0 shadow-sm position-sticky" style="top: 2rem;">
+                <div class="card-header bg-success bg-opacity-10 py-3">
+                    <h5 class="mb-0 fw-bold text-success">Summary</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4 pb-4 border-bottom">
+                        <span class="text-muted">Total Amount</span>
+                        <h3 id="quotation-total" class="mb-0 fw-bold text-dark">${{
+                            '%.2f'|format(quotation.total_amount) }}</h3>
                     </div>
-                    <div class="card-body p-4">
-                        <div class="d-flex justify-content-between align-items-center mb-4 pb-4 border-bottom">
-                            <span class="text-muted">Total Amount</span>
-                            <h3 id="quotation-total" class="mb-0 fw-bold text-dark">$0.00</h3>
-                        </div>
 
-                        <div class="mb-3">
-                            <label class="form-label fw-medium small text-muted">quotation Notes</label>
-                            <textarea class="form-control" name="notes" rows="3"
-                                placeholder="Optional notes..."></textarea>
-                        </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-medium small text-muted">quotation Notes</label>
+                        <textarea class="form-control" name="notes" rows="3"
+                            placeholder="Optional notes...">{{ quotation.notes }}</textarea>
+                    </div>
 
-                        <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary py-2 fw-medium shadow-sm">
-                                <i class="fas fa-paper-plane me-2"></i>Create quotation
-                            </button>
-                            <a href="{{ url_for('quotations') }}"
-                                class="btn btn-outline-secondary border-0 text-muted">Cancel</a>
-                        </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary py-2 fw-medium shadow-sm">
+                            <i class="fas fa-save me-2"></i>Update quotation
+                        </button>
+                        <a href="{{ url_for('quotations') }}"
+                            class="btn btn-outline-secondary border-0 text-muted">Cancel</a>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 </form>
 {% endblock %}
 
@@ -222,7 +230,6 @@
         const customFields = itemRow.querySelector('.custom-item-fields');
         const customItemNameInput = itemRow.querySelector('.custom-item-name');
 
-        // Find the option in the datalist
         const datalist = document.getElementById('all-inventory-list');
         let selectedOption = null;
         for (let option of datalist.options) {
@@ -233,34 +240,26 @@
         }
 
         if (selectedOption && val !== 'Create Custom Item') {
-            // Existing Item Logic
             const itemId = selectedOption.dataset.id;
             const price = selectedOption.dataset.price;
-
             hiddenIdInput.value = itemId;
             priceInput.value = price || '';
-
             customFields.style.display = 'none';
             customItemNameInput.value = '';
             customItemNameInput.required = false;
             priceInput.required = true;
             input.setCustomValidity("");
         } else if (val) {
-            // Treat as Custom Item automatically if something is typed
             hiddenIdInput.value = 'custom';
-
-            // If user explicitly picked Create Custom Item, clear name field and show it
             if (val === 'Create Custom Item') {
                 customItemNameInput.value = '';
                 customFields.style.display = 'block';
                 customItemNameInput.required = true;
             } else {
-                // Use what user typed as the name
                 customItemNameInput.value = val;
-                customFields.style.display = 'none'; // Keep hidden but keep value
+                customFields.style.display = 'none';
                 customItemNameInput.required = false;
             }
-
             priceInput.required = true;
             input.setCustomValidity("");
         } else {
@@ -281,17 +280,12 @@
                 const datalist = document.getElementById('customer-list');
                 const options = datalist.options;
                 let customerName = '';
-
                 for (let i = 0; i < options.length; i++) {
                     if (options[i].value === inputValue) {
-                        // Option format: "Name - ID" (text content), Value is ID
-                        // We extract name from text content
                         customerName = options[i].textContent.split(' - ')[0];
                         break;
                     }
                 }
-
-                // Only update if we found a match to avoid clearing while typing incomplete IDs
                 if (customerName) {
                     customerNameInput.value = customerName;
                 }
@@ -304,27 +298,16 @@
                 const datalist = document.getElementById('customer-name-list');
                 const options = datalist.options;
                 let customerId = '';
-
                 for (let i = 0; i < options.length; i++) {
                     if (options[i].value === inputValue) {
-                        // Option format: "ID: 123" (text content), Value is Name
-                        // We extract ID from text content
                         customerId = options[i].textContent.replace('ID: ', '').trim();
                         break;
                     }
                 }
-
                 if (customerId) {
                     customerIdInput.value = customerId;
                 }
             });
-        }
-    });
-
-    document.addEventListener('change', function (e) {
-        if (e.target.classList.contains('item-select')) {
-            // Legacy support if needed, but we are replacing it.
-            // updatePrice(e.target); 
         }
     });
 

@@ -114,6 +114,42 @@
     <div class="col-lg-6 mb-4">
         <div class="card shadow">
             <div class="card-header bg-primary text-white">
+                <h6 class="m-0 fw-bold">Sales by Activity Type</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="activityChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h6 class="m-0 fw-bold">Expense Breakdown</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="expenseChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-success text-white">
+                <h6 class="m-0 fw-bold">Profit by Item Category</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="profitCategoryChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-secondary text-white">
                 <h6 class="m-0 fw-bold">Most Visited Locations</h6>
             </div>
             <div class="card-body">
@@ -123,8 +159,8 @@
     </div>
     <div class="col-lg-6 mb-4">
         <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-                <h6 class="m-0 fw-bold">Profit by Item</h6>
+            <div class="card-header bg-secondary text-white">
+                <h6 class="m-0 fw-bold">Sales by Item</h6>
             </div>
             <div class="card-body">
                 <canvas id="itemChart"></canvas>
@@ -321,8 +357,73 @@
         data: {
             labels: {{ item_labels| tojson }},
         datasets: [{
-            label: 'Profit',
+            label: 'Sales Amount',
             data: {{ item_data| tojson }},
+        backgroundColor: chartColors
+            }]
+        },
+        options: {
+        responsive: true,
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            y: { beginAtZero: true }
+        }
+    }
+    });
+
+    // Activity Sales Chart
+    const activityCtx = document.getElementById('activityChart').getContext('2d');
+    new Chart(activityCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ income_by_activity.keys() | list | tojson }},
+        datasets: [{
+            label: 'Sales ($)',
+            data: {{ income_by_activity.values() | list | tojson }},
+        backgroundColor: chartColors
+            }]
+        },
+        options: {
+        responsive: true,
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            y: { beginAtZero: true }
+        }
+    }
+    });
+
+    // Expense Breakdown Chart
+    const expenseCtx = document.getElementById('expenseChart').getContext('2d');
+    new Chart(expenseCtx, {
+        type: 'pie',
+        data: {
+            labels: {{ expense_breakdown.keys() | list | tojson }},
+        datasets: [{
+            data: {{ expense_breakdown.values() | list | tojson }},
+        backgroundColor: chartColors
+            }]
+        },
+        options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'right' }
+        }
+    }
+    });
+
+    // Profit by Category Chart
+    const profitCategoryCtx = document.getElementById('profitCategoryChart').getContext('2d');
+    new Chart(profitCategoryCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ profit_by_category.keys() | list | tojson }},
+        datasets: [{
+            label: 'Gross Profit ($)',
+            data: {{ profit_by_category.values() | list | tojson }},
         backgroundColor: chartColors
             }]
         },

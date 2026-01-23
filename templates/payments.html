@@ -30,20 +30,24 @@
                     {% for payment in payments %}
                     <tr>
                         <td>{{ payment.payment_date.strftime('%Y-%m-%d') if payment.payment_date else 'N/A' }}</td>
-                        <td>{{ payment.invoice.customer.name if payment.invoice and payment.invoice.customer else
-                            'Unknown' }}</td>
+                        <td>{{ payment.invoice.customer.name }} {{ payment.invoice.customer.surname or '' if
+                            payment.invoice and payment.invoice.customer else 'Unknown' }}</td>
                         <td>{{ payment.payer_name or '-' }}</td>
                         <td><a href="{{ url_for('view_invoice', invoice_id=payment.invoice_id) }}">#{{
                                 payment.invoice_id }}</a></td>
                         <td>${{ "%.2f"|format(payment.amount) }}</td>
                         <td>{{ payment.payment_method.value if payment.payment_method and
-                            hasattr(payment.payment_method, 'value') else payment.payment_method or '-' }}</td>
+                            payment.payment_method.value is defined else payment.payment_method or '-' }}</td>
                         <td>{{ payment.reference_number or '-' }}</td>
 
                         <td>
                             <a href="{{ url_for('generate_payment_pdf', payment_id=payment.id) }}"
-                                class="btn btn-sm btn-secondary" title="Download Receipt">
+                                class="btn btn-sm btn-secondary me-1" title="Download Receipt">
                                 <i class="fas fa-file-pdf"></i>
+                            </a>
+                            <a href="{{ url_for('edit_payment', payment_id=payment.id) }}"
+                                class="btn btn-sm btn-warning text-white me-1" title="Edit">
+                                <i class="fas fa-edit"></i>
                             </a>
                             <form action="{{ url_for('delete_payment', payment_id=payment.id) }}" method="POST"
                                 class="d-inline"

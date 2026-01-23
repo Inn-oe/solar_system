@@ -103,9 +103,9 @@ class Supplier(Base):
 
 class Customer(Base):
     __tablename__ = 'customers'
-    id = Column(Integer, primary_key=True)
+    identification_number = Column(String(50), primary_key=True)
     name = Column(String(100), nullable=False)
-    identification_number = Column(String(50))
+    surname = Column(String(100))
     citizenship = Column(String(50))
     address = Column(String(200))
     phone = Column(String(20))
@@ -121,6 +121,7 @@ class Inventory(Base):
     specifications = Column(String(500))
     quantity = Column(Integer, default=0)
     unit_price = Column(Float, default=0.0)
+    cost_price = Column(Float, default=0.0)
     supplier_id = Column(Integer, ForeignKey('suppliers.id'))
     supplier = relationship('Supplier')
     minimum_stock_level = Column(Integer, default=5)
@@ -139,7 +140,7 @@ class ActivityType(Base):
 class Activity(Base):
     __tablename__ = 'activities'
     id = Column(Integer, primary_key=True)
-    customer_id = Column(Integer, ForeignKey('customers.id'))
+    customer_id = Column(String(50), ForeignKey('customers.identification_number'))
     customer = relationship('Customer')
     activity_type_id = Column(Integer, ForeignKey('activity_types.id'))
     activity_type = relationship('ActivityType')
@@ -160,7 +161,7 @@ class Activity(Base):
 class quotation(Base):
     __tablename__ = 'quotations'
     id = Column(Integer, primary_key=True)
-    customer_id = Column(Integer, ForeignKey('customers.id'))
+    customer_id = Column(String(50), ForeignKey('customers.identification_number'))
     customer = relationship('Customer')
     total_amount = Column(Float, nullable=False)
     tax_amount = Column(Float, default=0.0)
@@ -310,8 +311,10 @@ class Pricing(Base):
 class Invoice(Base):
     __tablename__ = 'invoices'
     id = Column(Integer, primary_key=True)
-    customer_id = Column(Integer, ForeignKey('customers.id'))
+    customer_id = Column(String(50), ForeignKey('customers.identification_number'))
     customer = relationship('Customer')
+    activity_type_id = Column(Integer, ForeignKey('activity_types.id'), nullable=True)
+    activity_type = relationship('ActivityType')
     quotation_id = Column(Integer, ForeignKey('quotations.id'), nullable=True)
     quotation = relationship('quotation')
     total_amount = Column(Float, nullable=False)
@@ -333,6 +336,7 @@ class InvoiceItem(Base):
     description = Column(String(200))
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Float, nullable=False)
+    cost_price = Column(Float, default=0.0)
     amount = Column(Float, nullable=False)
 
 class Payment(Base):

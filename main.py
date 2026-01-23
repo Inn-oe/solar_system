@@ -250,11 +250,64 @@ def financial():
         FinancialRecord.date < end_date
     ).order_by(FinancialRecord.date.desc()).limit(10).all()
 
-    # Inventory turnover (COGS / Average Inventory)
-    avg_inventory_value = db_session.query(db.func.avg(Inventory.unit_price * Inventory.quantity)).scalar() or 1
-    inventory_turnover = abs(cogs) / avg_inventory_value if avg_inventory_value > 0 else 0
+    # --- Aggregations for Charts ---
 
-    # Profit/Loss breakdown
+    # 1. Income by Activity Type
+    from models import ActivityType
+    income_by_activity = {}
+    activity_types = db_session.query(ActivityType).all()
+    for at in activity_types:
+        amt = db_session.query(db.func.sum(Payment.amount)).join(Invoice).filter(
+            Invoice.activity_type_id == at.id,
+            Payment.payment_date >= start_date,
+            Payment.payment_date < end_date
+        ).scalar() or 0
+        if amt > 0:
+            income_by_activity[at.name] = amt
+    
+    uncategorized_income = db_session.query(db.func.sum(Payment.amount)).join(Invoice).filter(
+        Invoice.activity_type_id == None,
+        Payment.payment_date >= start_date,
+        Payment.payment_date < end_date
+    ).scalar() or 0
+    if uncategorized_income > 0:
+        income_by_activity["Uncategorized Sales"] = uncategorized_income
+
+    # 2. Expenses by Category
+    expense_breakdown = {}
+    expense_records = db_session.query(
+        FinancialRecord.category,
+        db.func.sum(FinancialRecord.amount)
+    ).filter(
+        FinancialRecord.type == FinancialType.EXPENSE,
+        FinancialRecord.date >= start_date,
+        FinancialRecord.date < end_date
+    ).group_by(FinancialRecord.category).all()
+    
+    for cat, amt in expense_records:
+        expense_breakdown[cat or "Other"] = amt
+
+    # 3. Profit by Item Category (Gross Profit)
+    profit_by_category = {}
+    
+    # Calculate profit from invoices
+    # Profit = (Selling Price - Cost Price) * Quantity
+    invoice_items_profit = db_session.query(
+        Inventory.category,
+        db.func.sum((InvoiceItem.unit_price - InvoiceItem.cost_price) * InvoiceItem.quantity)
+    ).join(Inventory, InvoiceItem.inventory_id == Inventory.id)\
+     .join(Invoice, InvoiceItem.invoice_id == Invoice.id)\
+     .filter(
+        Invoice.date_created >= start_date,
+        Invoice.date_created < end_date,
+        Invoice.status != InvoiceStatus.CANCELLED
+    ).group_by(Inventory.category).all()
+
+    for cat, profit_amt in invoice_items_profit:
+        if profit_amt != 0:
+            profit_by_category[cat or "Uncategorized"] = profit_amt
+
+    # Profit/Loss breakdown for main chart
     profit_breakdown = {
         'Payments Received': total_sales,
         'Other Income': total_income,
@@ -262,7 +315,7 @@ def financial():
         'COGS': -abs(cogs)
     }
 
-    # Monthly revenue and expenses for charts
+    # Monthly revenue and expenses for trends chart
     months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     monthly_revenue_data = []
     monthly_expenses_data = []
@@ -274,11 +327,16 @@ def financial():
         else:
             month_end = datetime(selected_year, m + 1, 1)
 
-        rev = db_session.query(db.func.sum(Payment.amount)).filter(
+        rev_pay = db_session.query(db.func.sum(Payment.amount)).filter(
             Payment.payment_date >= month_start,
             Payment.payment_date < month_end
         ).scalar() or 0
-        monthly_revenue_data.append(rev)
+        rev_inc = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+            FinancialRecord.type == FinancialType.INCOME,
+            FinancialRecord.date >= month_start,
+            FinancialRecord.date < month_end
+        ).scalar() or 0
+        monthly_revenue_data.append(rev_pay + rev_inc)
 
         exp = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
             FinancialRecord.type == FinancialType.EXPENSE,
@@ -287,50 +345,40 @@ def financial():
         ).scalar() or 0
         monthly_expenses_data.append(exp)
 
-    # Profit by item (from invoice items)
-    invoice_items = db_session.query(InvoiceItem).join(Invoice).filter(
+    # Sales by item aggregation
+    top_items_data = db_session.query(
+        InvoiceItem.description,
+        db.func.sum(InvoiceItem.amount)
+    ).join(Invoice).filter(
         Invoice.date_created >= start_date,
         Invoice.date_created < end_date
-    ).all()
+    ).group_by(InvoiceItem.description).order_by(db.func.sum(InvoiceItem.amount).desc()).limit(10).all()
+    
+    item_labels = [item[0] for item in top_items_data]
+    item_data = [item[1] for item in top_items_data]
 
-    item_profits = {}
-    for item in invoice_items:
-        if item.inventory_id:
-            inventory = db_session.query(Inventory).get(item.inventory_id)
-            item_name = inventory.name if inventory else "Unknown Item"
-            cost_price = inventory.unit_price if inventory else 0
-        else:
-            item_name = item.description or "Custom Item"
-            cost_price = item.unit_price * 0.7 # Fallback for custom items
+    # Inventory Metrics
+    total_inventory_value = db_session.query(db.func.sum(Inventory.unit_price * Inventory.quantity)).scalar() or 0
+    inventory_turnover = (abs(cogs) / total_inventory_value) if total_inventory_value > 0 else 0
 
-        selling_price = item.unit_price
-        profit = (selling_price - cost_price) * item.quantity
-
-        item_profits[item_name] = item_profits.get(item_name, 0) + profit
-
-    # Sort by profit descending and take top items
-    sorted_items = sorted(item_profits.items(), key=lambda x: x[1], reverse=True)[:10]
-    item_labels = [item[0] for item in sorted_items]
-    item_data = [item[1] for item in sorted_items]
-
-    # Location data for chart
+    # Location analytics
+    location_counts = {}
     journey_records = db_session.query(JourneyRecord).filter(
         JourneyRecord.start_time >= start_date,
         JourneyRecord.start_time < end_date
     ).all()
-
-    location_counts = {}
     for jr in journey_records:
-        location = jr.end_location or jr.start_location
-        if location:
-            location_counts[location] = location_counts.get(location, 0) + 1
+        loc = jr.end_location or jr.start_location
+        if loc:
+            location_counts[loc] = location_counts.get(loc, 0) + 1
 
-    top_locations = sorted(location_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-    location_labels = [loc[0] for loc in top_locations]
-    location_data = [loc[1] for loc in top_locations]
+    top_locations_list = sorted(location_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    location_labels = [loc[0] for loc in top_locations_list]
+    location_data = [loc[1] for loc in top_locations_list]
 
     return render_template('financial.html',
                          total_sales=total_sales,
+                         profit_by_category=profit_by_category,
                          total_expenses=total_expenses,
                          total_income=total_income,
                          profit=profit,
@@ -342,6 +390,8 @@ def financial():
                          total_fuel_cost=total_fuel_cost,
                          inventory_turnover=inventory_turnover,
                          profit_breakdown=profit_breakdown,
+                         income_by_activity=income_by_activity,
+                         expense_breakdown=expense_breakdown,
                          months=months,
                          monthly_revenue_data=monthly_revenue_data,
                          monthly_expenses_data=monthly_expenses_data,
@@ -410,9 +460,28 @@ def add_supplier():
 def add_customer():
     """Add new customer"""
     if request.method == 'POST':
+        id_num = request.form.get('identification_number', '').strip()
+        
+        if not id_num:
+            # Auto-generate 5-digit ID
+            from sqlalchemy import func
+            max_id_query = db_session.query(Customer.identification_number).filter(Customer.identification_number.op('GLOB')('[0-9]*')).all()
+            
+            max_val = 0
+            for (id_str,) in max_id_query:
+                try:
+                    val = int(id_str)
+                    if val > max_val:
+                        max_val = val
+                except:
+                    continue
+            
+            id_num = f"{max_val + 1:05d}"
+            
         customer = Customer(
             name=request.form['name'],
-            identification_number=request.form['identification_number'],
+            surname=request.form['surname'],
+            identification_number=id_num,
             citizenship=request.form['citizenship'],
             address=request.form['address'],
             phone=request.form['phone'],
@@ -544,29 +613,6 @@ def add_quotation():
                             'unit_price': unit_price,
                             'item_total': item_total
                         })
-                    elif item_id:
-                        # Handle regular inventory item
-                        inventory_item = db_session.query(Inventory).get(int(item_id))
-                        if not inventory_item:
-                            flash(f'Item not found', 'error')
-                            return redirect(url_for('add_quotation'))
-
-                        qty = int(quantities[i])
-                        if inventory_item.quantity < qty:
-                            flash(f'Insufficient stock for {inventory_item.name}. Available: {inventory_item.quantity}', 'error')
-                            return redirect(url_for('add_quotation'))
-
-                        unit_price = float(unit_prices[i])
-                        item_total = qty * unit_price
-                        calculated_total += item_total
-
-                        quotation_items_data.append({
-                            'inventory_id': int(item_id),
-                            'inventory_item': inventory_item,
-                            'quantity': qty,
-                            'unit_price': unit_price,
-                            'item_total': item_total
-                        })
 
             # Find customer by identification number
             customer_identification = request.form['customer_identification']
@@ -578,7 +624,7 @@ def add_quotation():
 
             # Create quotation with calculated total
             new_quotation = quotation(
-                customer_id=customer.id,
+                customer_id=customer.identification_number,
                 total_amount=calculated_total,
                 status='PENDING'
             )
@@ -630,13 +676,116 @@ def add_quotation():
     inventory_items = db_session.query(Inventory).filter(Inventory.quantity > 0).all()
     return render_template('add_quotation.html', customers=customers, inventory_items=inventory_items)
 
+@app.route('/quotations/edit/<int:quotation_id>', methods=['GET', 'POST'])
+def edit_quotation(quotation_id):
+    """Edit existing quotation"""
+    quotation_obj = db_session.query(quotation).get(quotation_id)
+    if not quotation_obj:
+        flash('Quotation not found', 'error')
+        return redirect(url_for('quotations'))
+    
+    # Check if PROCESSED
+    if quotation_obj.status == 'PROCESSED':
+        flash('Cannot edit a processed quotation', 'warning')
+        return redirect(url_for('quotations'))
+
+    if request.method == 'POST':
+        try:
+            # Process and validate quotation items
+            item_ids = request.form.getlist('item_id[]')
+            quantities = request.form.getlist('quantity[]')
+            unit_prices = request.form.getlist('unit_price[]')
+            custom_item_names = request.form.getlist('custom_item_name[]')
+
+            calculated_total = 0
+            quotation_items_data = []
+
+            for i, item_id in enumerate(item_ids):
+                if item_id:
+                    qty = int(quantities[i])
+                    unit_price = float(unit_prices[i])
+                    item_total = qty * unit_price
+                    calculated_total += item_total
+
+                    if item_id == 'custom':
+                        custom_name = custom_item_names[i] if i < len(custom_item_names) else ''
+                        quotation_items_data.append({
+                            'inventory_id': None,
+                            'custom_name': custom_name,
+                            'quantity': qty,
+                            'unit_price': unit_price,
+                            'item_total': item_total
+                        })
+                    else:
+                        inventory_item = db_session.query(Inventory).get(int(item_id))
+                        quotation_items_data.append({
+                            'inventory_id': int(item_id),
+                            'inventory_item': inventory_item,
+                            'quantity': qty,
+                            'unit_price': unit_price,
+                            'item_total': item_total
+                        })
+
+            # Update customer if changed
+            customer_identification = request.form['customer_identification']
+            if quotation_obj.customer_id != customer_identification:
+                customer = db_session.query(Customer).filter_by(identification_number=customer_identification).first()
+                if not customer:
+                    flash(f'Customer {customer_identification} not found', 'error')
+                    return redirect(url_for('edit_quotation', quotation_id=quotation_id))
+                quotation_obj.customer_id = customer_identification
+
+            # Update quotation details
+            quotation_obj.total_amount = calculated_total
+            quotation_obj.notes = request.form.get('notes')
+            
+            # Recreate items (cleaner than updating)
+            # 1. Remove old items
+            db_session.query(quotationItem).filter_by(quotation_id=quotation_id).delete()
+            
+            # 2. Add new items
+            for item_data in quotation_items_data:
+                if item_data['inventory_id'] is None:
+                    timestamp_code = datetime.now().strftime('%Y%m%d%H%M%S')
+                    custom_code = f"CUST-EDT-{timestamp_code}"
+                    qi = quotationItem(
+                        quotation_id=quotation_obj.id,
+                        inventory_id=None,
+                        quantity=item_data['quantity'],
+                        unit_price=item_data['unit_price'],
+                        description=item_data['custom_name'],
+                        item_code=custom_code
+                    )
+                else:
+                    qi = quotationItem(
+                        quotation_id=quotation_obj.id,
+                        inventory_id=item_data['inventory_id'],
+                        quantity=item_data['quantity'],
+                        unit_price=item_data['unit_price'],
+                        item_code=item_data['inventory_item'].specifications or "INV-ITM"
+                    )
+                db_session.add(qi)
+
+            db_session.commit()
+            flash('Quotation updated successfully!', 'success')
+            return redirect(url_for('quotations'))
+
+        except Exception as e:
+            db_session.rollback()
+            flash(f'Error updating quotation: {str(e)}', 'error')
+            return redirect(url_for('edit_quotation', quotation_id=quotation_id))
+
+    customers = db_session.query(Customer).all()
+    inventory_items = db_session.query(Inventory).filter(Inventory.quantity > 0).all()
+    return render_template('edit_quotation.html', quotation=quotation_obj, customers=customers, inventory_items=inventory_items)
+
 @app.route('/activities/add', methods=['GET', 'POST'])
 def add_activity():
     """Add new activity"""
     if request.method == 'POST':
         from models import ActivityStatusEnum, Currency
         activity = Activity(
-            customer_id=int(request.form['customer_id']),
+            customer_id=request.form['customer_id'],
             activity_type_id=int(request.form['activity_type_id']),
             description=request.form['description'],
             status=ActivityStatusEnum(request.form['status']),
@@ -683,7 +832,7 @@ def edit_activity(activity_id):
 
     if request.method == 'POST':
         from models import ActivityStatusEnum, Currency
-        activity.customer_id = int(request.form['customer_id'])
+        activity.customer_id = request.form['customer_id']
         activity.activity_type_id = int(request.form['activity_type_id'])
         activity.description = request.form['description']
         activity.status = ActivityStatusEnum(request.form['status'])
@@ -943,7 +1092,8 @@ def stock_in():
 
         # Update inventory quantity
         item.quantity += quantity
-        item.unit_price = unit_price  # Update unit price
+        item.cost_price = unit_price  # Update cost price (buying price) from input
+        # item.unit_price = unit_price # Do not overwrite selling price with cost
 
         # Record stock transaction
         from models import TransactionType
@@ -1025,6 +1175,19 @@ def add_fuel_record():
             notes=request.form.get('notes', '')
         )
         db_session.add(fuel_record)
+        
+        # Automatically create an expense record in FinancialRecord
+        from models import FinancialType, ExpenseCategory
+        expense = FinancialRecord(
+            type=FinancialType.EXPENSE,
+            category="Fuel",
+            description=f"Fuel for vehicle {fuel_record.vehicle_id} at {fuel_record.fuel_station}",
+            amount=fuel_record.total_cost,
+            date=fuel_record.date,
+            notes=fuel_record.notes
+        )
+        db_session.add(expense)
+
         db_session.commit()
         flash('Fuel record added successfully!', 'success')
         return redirect(url_for('fuel_tracking'))
@@ -1166,7 +1329,29 @@ def delete_pricing(pricing_id):
         flash('Pricing record not found!', 'error')
     return redirect(url_for('pricing'))
 
-@app.route('/customers/delete/<int:customer_id>', methods=['POST'])
+@app.route('/customers/edit/<string:customer_id>', methods=['GET', 'POST'])
+def edit_customer(customer_id):
+    """Edit customer details"""
+    customer = db_session.query(Customer).get(customer_id)
+    if not customer:
+        flash('Customer not found!', 'error')
+        return redirect(url_for('customers'))
+    
+    if request.method == 'POST':
+        customer.name = request.form['name']
+        customer.surname = request.form['surname']
+        customer.citizenship = request.form['citizenship']
+        customer.address = request.form['address']
+        customer.phone = request.form['phone']
+        customer.email = request.form['email']
+        
+        db_session.commit()
+        flash('Customer updated successfully!', 'success')
+        return redirect(url_for('customers'))
+    
+    return render_template('edit_customer.html', customer=customer)
+
+@app.route('/customers/delete/<string:customer_id>', methods=['POST'])
 def delete_customer(customer_id):
     """Delete customer"""
     customer = db_session.query(Customer).get(customer_id)
@@ -1177,6 +1362,30 @@ def delete_customer(customer_id):
     else:
         flash('Customer not found!', 'error')
     return redirect(url_for('customers'))
+
+@app.route('/suppliers/edit/<int:supplier_id>', methods=['GET', 'POST'])
+def edit_supplier(supplier_id):
+    """Edit supplier details"""
+    supplier = db_session.query(Supplier).get(supplier_id)
+    if not supplier:
+        flash('Supplier not found!', 'error')
+        return redirect(url_for('suppliers'))
+    
+    if request.method == 'POST':
+        from models import Currency
+        supplier.name = request.form['name']
+        supplier.contact_person = request.form['contact_person']
+        supplier.phone = request.form['phone']
+        supplier.email = request.form['email']
+        supplier.address = request.form['address']
+        supplier.payment_terms = request.form['payment_terms']
+        supplier.currency = Currency(request.form['currency']) if request.form['currency'] else Currency.USD
+        
+        db_session.commit()
+        flash('Supplier updated successfully!', 'success')
+        return redirect(url_for('suppliers'))
+    
+    return render_template('edit_supplier.html', supplier=supplier)
 
 @app.route('/suppliers/delete/<int:supplier_id>', methods=['POST'])
 def delete_supplier(supplier_id):
@@ -1440,7 +1649,7 @@ def generate_quotation_pdf(quotation_id):
         alignment=0,  # Left alignment
         spaceAfter=10
     )
-    story.append(Paragraph(f"<b>Customer:</b> {quotation_obj.customer.name}", customer_date_style))
+    story.append(Paragraph(f"<b>Customer:</b> {quotation_obj.customer.name} {quotation_obj.customer.surname or ''}", customer_date_style))
     story.append(Paragraph(f"<b>Date:</b> {quotation_obj.date_created.strftime('%d-%m-%Y')}", customer_date_style))
     story.append(Spacer(1, 0.2*inch))
  
@@ -1518,6 +1727,51 @@ def generate_quotation_pdf(quotation_id):
  
     return send_file(buffer, as_attachment=True, download_name=f'quotation_{quotation_obj.id}.pdf', mimetype='application/pdf')
 
+@app.route('/payments/edit/<int:payment_id>', methods=['GET', 'POST'])
+def edit_payment(payment_id):
+    """Edit existing payment and adjust invoice balance"""
+    payment_obj = db_session.query(Payment).get(payment_id)
+    if not payment_obj:
+        flash('Payment not found', 'error')
+        return redirect(url_for('payments'))
+
+    if request.method == 'POST':
+        try:
+            old_amount = payment_obj.amount
+            new_amount = float(request.form['amount'])
+            diff = new_amount - old_amount
+            
+            # Update payment
+            payment_obj.amount = new_amount
+            payment_obj.payment_method = request.form['payment_method']
+            payment_obj.payer_name = request.form['payer_name']
+            payment_obj.reference_number = request.form.get('reference')
+            payment_obj.notes = request.form.get('notes')
+            
+            # Adjust invoice balance
+            invoice = payment_obj.invoice
+            if invoice:
+                invoice.balance_due -= diff
+                # Status update
+                from models import InvoiceStatus
+                if invoice.balance_due <= 0:
+                    invoice.status = InvoiceStatus.PAID
+                elif invoice.balance_due < invoice.total_amount:
+                    invoice.status = InvoiceStatus.PARTIAL
+                else:
+                    invoice.status = InvoiceStatus.SENT # Or whatever default
+
+            db_session.commit()
+            flash('Payment updated successfully!', 'success')
+            return redirect(url_for('payments'))
+
+        except Exception as e:
+            db_session.rollback()
+            flash(f'Error updating payment: {str(e)}', 'error')
+            return redirect(url_for('edit_payment', payment_id=payment_id))
+
+    return render_template('edit_payment.html', payment=payment_obj)
+
 @app.route('/invoices')
 def invoices():
     """List all invoices"""
@@ -1586,6 +1840,7 @@ def add_invoice():
                             'item_code': inventory_item.specifications or "INV-ITM",
                             'quantity': qty,
                             'unit_price': unit_price,
+                            'cost_price': inventory_item.cost_price,
                             'item_total': item_total
                         })
 
@@ -1595,8 +1850,15 @@ def add_invoice():
                 flash(f'Customer not found', 'error')
                 return redirect(url_for('add_invoice'))
 
+            activity_type_id = request.form.get('activity_type_id')
+            if activity_type_id == '':
+                activity_type_id = None
+            else:
+                activity_type_id = int(activity_type_id)
+
             invoice = Invoice(
-                customer_id=customer.id,
+                customer_id=customer.identification_number,
+                activity_type_id=activity_type_id,
                 total_amount=calculated_total,
                 balance_due=calculated_total,
                 status=InvoiceStatus.DRAFT,
@@ -1613,6 +1875,7 @@ def add_invoice():
                     description=item_data.get('custom_name') or item_data['inventory_item'].name,
                     quantity=item_data['quantity'],
                     unit_price=item_data['unit_price'],
+                    cost_price=item_data.get('cost_price', 0.0),
                     amount=item_data['item_total']
                 )
                 db_session.add(inv_item)
@@ -1629,6 +1892,7 @@ def add_invoice():
                         total_value=-item_data['item_total'],
                         reference_id=invoice.id,
                         reference_type='invoice',
+                        customer_name=f"{customer.name} {customer.surname or ''}",
                         notes=f'Sold via Invoice #{invoice.id}'
                     )
                     db_session.add(stock_transaction)
@@ -1645,7 +1909,144 @@ def add_invoice():
     customers = db_session.query(Customer).all()
     inventory_items = db_session.query(Inventory).filter(Inventory.quantity > 0).all()
     quotations = db_session.query(quotation).all()
-    return render_template('add_invoice.html', customers=customers, inventory_items=inventory_items, quotations=quotations)
+    activity_types = db_session.query(ActivityType).filter_by(is_active=True).all()
+    return render_template('add_invoice.html', customers=customers, inventory_items=inventory_items, quotations=quotations, activity_types=activity_types)
+
+@app.route('/invoices/edit/<int:invoice_id>', methods=['GET', 'POST'])
+def edit_invoice(invoice_id):
+    """Edit existing invoice and manage stock"""
+    invoice_obj = db_session.query(Invoice).get(invoice_id)
+    if not invoice_obj:
+        flash('Invoice not found', 'error')
+        return redirect(url_for('invoices'))
+
+    if request.method == 'POST':
+        from models import TransactionType, StockChangeReason, StockTransaction
+        try:
+            # 1. Process items
+            item_ids = request.form.getlist('item_id[]')
+            quantities = request.form.getlist('quantity[]')
+            unit_prices = request.form.getlist('unit_price[]')
+            custom_item_names = request.form.getlist('custom_item_name[]')
+
+            calculated_total = 0
+            invoice_items_data = []
+
+            # 2. Revert OLD stock
+            db_items = db_session.query(InvoiceItem).filter_by(invoice_id=invoice_id).all()
+            for db_item in db_items:
+                if db_item.inventory_id:
+                    inv_item = db_session.query(Inventory).get(db_item.inventory_id)
+                    if inv_item:
+                        inv_item.quantity += db_item.quantity
+                        # Add a compensation transaction
+                        transaction = StockTransaction(
+                            inventory_id=inv_item.id,
+                            transaction_type=TransactionType.STOCK_IN,
+                            quantity=db_item.quantity,
+                            reason=StockChangeReason.RESTOCK,
+                            notes=f"Reverting for invoice #{invoice_id} edit",
+                            reference_id=invoice_id,
+                            reference_type="INVOICE_EDIT_REVERT"
+                        )
+                        db_session.add(transaction)
+
+            # 3. Process NEW items
+            for i, item_id in enumerate(item_ids):
+                if item_id:
+                    qty = int(quantities[i])
+                    unit_price = float(unit_prices[i])
+                    item_total = qty * unit_price
+                    calculated_total += item_total
+
+                    if item_id == 'custom':
+                        custom_name = custom_item_names[i] if i < len(custom_item_names) else ''
+                        timestamp_code = datetime.now().strftime('%Y%m%d%H%M%S')
+                        custom_code = f"CUST-INV-EDT-{timestamp_code}-{i}"
+                        invoice_items_data.append({
+                            'inventory_id': None,
+                            'custom_name': custom_name,
+                            'item_code': custom_code,
+                            'quantity': qty,
+                            'unit_price': unit_price,
+                            'item_total': item_total
+                        })
+                    else:
+                        inv_id = int(item_id)
+                        inv_item = db_session.query(Inventory).get(inv_id)
+                        if inv_item:
+                            inv_item.quantity -= qty
+                            transaction = StockTransaction(
+                                inventory_id=inv_item.id,
+                                transaction_type=TransactionType.STOCK_OUT,
+                                quantity=-qty,
+                                unit_price=unit_price,
+                                total_value=-item_total,
+                                reference_id=invoice_id,
+                                reference_type="INVOICE_EDIT_DEDUCT",
+                                customer_name=f"{invoice_obj.customer.name} {invoice_obj.customer.surname or ''}",
+                                notes=f"Updating invoice #{invoice_id}"
+                            )
+                            db_session.add(transaction)
+
+                            invoice_items_data.append({
+                                'inventory_id': inv_id,
+                                'inventory_item': inv_item,
+                                'item_code': inv_item.specifications or "INV-ITM",
+                                'quantity': qty,
+                                'unit_price': unit_price,
+                                'item_total': item_total
+                            })
+
+            # 4. Update Invoice
+            activity_type_id = request.form.get('activity_type_id')
+            if activity_type_id == '':
+                invoice_obj.activity_type_id = None
+            else:
+                invoice_obj.activity_type_id = int(activity_type_id)
+            
+            invoice_obj.customer_id = request.form['customer_identification']
+            old_total = invoice_obj.total_amount
+            new_total = calculated_total
+            paid_amount = old_total - invoice_obj.balance_due
+            invoice_obj.total_amount = new_total
+            invoice_obj.balance_due = max(0.0, new_total - paid_amount)
+            
+            from models import InvoiceStatus
+            if invoice_obj.balance_due <= 0 and paid_amount > 0:
+                invoice_obj.status = InvoiceStatus.PAID
+            elif invoice_obj.balance_due > 0 and paid_amount > 0:
+                invoice_obj.status = InvoiceStatus.PARTIAL
+            elif invoice_obj.balance_due == new_total:
+                invoice_obj.status = InvoiceStatus.DRAFT
+
+            # 5. Recreate Items
+            db_session.query(InvoiceItem).filter_by(invoice_id=invoice_id).delete()
+            for item in invoice_items_data:
+                new_item = InvoiceItem(
+                    invoice_id=invoice_id,
+                    inventory_id=item['inventory_id'],
+                    item_code=item['item_code'],
+                    description=item.get('custom_name') or item['inventory_item'].name,
+                    quantity=item['quantity'],
+                    unit_price=item['unit_price'],
+                    amount=item['item_total']
+                )
+                db_session.add(new_item)
+
+            db_session.commit()
+            flash('Invoice updated successfully!', 'success')
+            return redirect(url_for('invoices'))
+
+        except Exception as e:
+            db_session.rollback()
+            flash(f'Error updating invoice: {str(e)}', 'error')
+            return redirect(url_for('edit_invoice', invoice_id=invoice_id))
+
+    customers = db_session.query(Customer).all()
+    inventory_items = db_session.query(Inventory).all()
+    activity_types = db_session.query(ActivityType).filter_by(is_active=True).all()
+    return render_template('edit_invoice.html', invoice=invoice_obj, customers=customers, inventory_items=inventory_items, activity_types=activity_types)
 
 @app.route('/quotations/<int:quotation_id>/convert', methods=['POST'])
 def convert_to_invoice(quotation_id):
@@ -1706,6 +2107,7 @@ def convert_to_invoice(quotation_id):
                     total_value=-(q_item.quantity * q_item.unit_price),
                     reference_id=invoice.id,
                     reference_type='invoice',
+                    customer_name=f"{quotation_obj.customer.name} {quotation_obj.customer.surname or ''}",
                     notes=f'Converted from Quotation #{quotation_obj.id} to Invoice #{invoice.id}'
                 )
                 db_session.add(stock_transaction)
@@ -1827,7 +2229,7 @@ def generate_invoice_pdf(invoice_id):
         alignment=0,
         spaceAfter=10
     )
-    story.append(Paragraph(f"<b>Customer:</b> {invoice.customer.name}", customer_date_style))
+    story.append(Paragraph(f"<b>Customer:</b> {invoice.customer.name} {invoice.customer.surname or ''}", customer_date_style))
     story.append(Paragraph(f"<b>Date:</b> {invoice.date_created.strftime('%d-%m-%Y')}", customer_date_style))
     story.append(Paragraph(f"<b>Status:</b> {invoice.status.value}", customer_date_style))
     story.append(Spacer(1, 0.2*inch))
@@ -1901,7 +2303,7 @@ def generate_invoice_pdf(invoice_id):
     buffer.seek(0)
 
     # Sanitize filename
-    safe_name = "".join([c for c in invoice.customer.name if c.isalpha() or c.isdigit() or c==' ']).rstrip().replace(" ", "_")
+    safe_name = "".join([c for c in f"{invoice.customer.name} {invoice.customer.surname or ''}" if c.isalpha() or c.isdigit() or c==' ']).rstrip().replace(" ", "_")
     filename = f'Invoice_{invoice.id}_{safe_name}.pdf'
 
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
@@ -2077,7 +2479,7 @@ def generate_payment_pdf(payment_id):
     invoice = payment.invoice
     customer = invoice.customer
 
-    story.append(Paragraph(f"<b>Received From:</b> {customer.name}", details_style))
+    story.append(Paragraph(f"<b>Received From:</b> {customer.name} {customer.surname or ''}", details_style))
     story.append(Paragraph(f"<b>Date:</b> {payment.payment_date.strftime('%d-%m-%Y')}", details_style))
     story.append(Paragraph(f"<b>Payment Method:</b> {payment.payment_method.value}", details_style))
     if payment.reference_number:
@@ -2114,7 +2516,7 @@ def generate_payment_pdf(payment_id):
     buffer.seek(0)
 
     # Sanitize filename
-    safe_name = "".join([c for c in customer.name if c.isalpha() or c.isdigit() or c==' ']).rstrip().replace(" ", "_")
+    safe_name = "".join([c for c in f"{customer.name} {customer.surname or ''}" if c.isalpha() or c.isdigit() or c==' ']).rstrip().replace(" ", "_")
     filename = f'Payment_{payment.id}_{safe_name}.pdf'
 
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')

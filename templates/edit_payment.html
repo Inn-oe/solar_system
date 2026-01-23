@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Payment - #{{ payment.id }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-warning text-white">
+                <h4 class="mb-0">Edit Payment #{{ payment.id }}</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <div class="d-flex justify-content-between">
+                        <span>Invoice:</span>
+                        <strong>#{{ payment.invoice_id }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Invoice Total:</span>
+                        <strong>${{ "%.2f"|format(payment.invoice.total_amount) }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Current Invoice Balance:</span>
+                        <strong>${{ "%.2f"|format(payment.invoice.balance_due) }}</strong>
+                    </div>
+                </div>
+
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="amount" class="form-label">Payment Amount ($)</label>
+                        <input type="number" step="0.01" class="form-control" id="amount" name="amount" required
+                            value="{{ " %.2f"|format(payment.amount) }}">
+                        <p class="small text-muted mt-1">Changing this will automatically adjust the invoice balance.
+                        </p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="payment_method" class="form-label">Payment Method</label>
+                        <select class="form-select" id="payment_method" name="payment_method" required>
+                            <option value="CASH" {% if payment.payment_method.value=='CASH' or
+                                payment.payment_method=='CASH' %}selected{% endif %}>CASH</option>
+                            <option value="ECOCASH" {% if payment.payment_method.value=='ECOCASH' or
+                                payment.payment_method=='ECOCASH' %}selected{% endif %}>ECOCASH</option>
+                            <option value="SWIPE" {% if payment.payment_method.value=='SWIPE' or
+                                payment.payment_method=='SWIPE' %}selected{% endif %}>SWIPE</option>
+                            <option value="TRANSFER" {% if payment.payment_method.value=='TRANSFER' or
+                                payment.payment_method=='TRANSFER' %}selected{% endif %}>TRANSFER</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="payer_name" class="form-label">Payer Name (Received From)</label>
+                        <input type="text" class="form-control" id="payer_name" name="payer_name"
+                            placeholder="e.g. John Doe" required value="{{ payment.payer_name or '' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="reference" class="form-label">Reference Number (Optional)</label>
+                        <input type="text" class="form-control" id="reference" name="reference"
+                            placeholder="e.g. Transaction ID" value="{{ payment.reference_number or '' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Notes (Optional)</label>
+                        <textarea class="form-control" id="notes" name="notes"
+                            rows="2">{{ payment.notes or '' }}</textarea>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">Update Payment</button>
+                        <a href="{{ url_for('payments') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

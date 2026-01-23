@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Add Customer - Giebee Engineering{% endblock %}
+{% block title %}Edit Customer - Giebee Engineering{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h1 class="h2 fw-bold text-dark mb-1">Add New Customer</h1>
-        <p class="text-muted mb-0">Create a new customer profile</p>
+        <h1 class="h2 fw-bold text-dark mb-1">Edit Customer</h1>
+        <p class="text-muted mb-0">Update customer profile for {{ customer.name }}</p>
     </div>
     <a href="{{ url_for('customers') }}" class="btn btn-light border text-muted hover-dark">
         <i class="fas fa-arrow-left me-2"></i>Back to List
@@ -28,7 +28,7 @@
                             <div class="input-group">
                                 <span class="input-group-text bg-light text-muted"><i class="fas fa-user"></i></span>
                                 <input type="text" class="form-control" id="name" name="name" required
-                                    placeholder="Enter first name">
+                                    value="{{ customer.name }}">
                             </div>
                         </div>
                         <div class="col-md-6 mb-4">
@@ -37,7 +37,7 @@
                             <div class="input-group">
                                 <span class="input-group-text bg-light text-muted"><i class="fas fa-user"></i></span>
                                 <input type="text" class="form-control" id="surname" name="surname" required
-                                    placeholder="Enter surname">
+                                    value="{{ customer.surname or '' }}">
                             </div>
                         </div>
                     </div>
@@ -47,12 +47,13 @@
                             <label for="identification_number" class="form-label fw-medium">Identification
                                 Number</label>
                             <input type="text" class="form-control" id="identification_number"
-                                name="identification_number" placeholder="Leave blank to auto-generate 5-digit ID">
+                                name="identification_number" value="{{ customer.identification_number }}" readonly>
+                            <div class="form-text">Primary Key cannot be changed.</div>
                         </div>
                         <div class="col-md-6 mb-4">
                             <label for="citizenship" class="form-label fw-medium">Citizenship / Origin</label>
                             <input type="text" class="form-control" id="citizenship" name="citizenship"
-                                placeholder="e.g., Zimbabwean">
+                                value="{{ customer.citizenship or '' }}">
                         </div>
                     </div>
 
@@ -61,8 +62,8 @@
                         <div class="input-group">
                             <span class="input-group-text bg-light text-muted"><i
                                     class="fas fa-map-marker-alt"></i></span>
-                            <textarea class="form-control" id="address" name="address" rows="3"
-                                placeholder="Enter physical address"></textarea>
+                            <textarea class="form-control" id="address" name="address"
+                                rows="3">{{ customer.address or '' }}</textarea>
                         </div>
                     </div>
 
@@ -71,7 +72,8 @@
                             <label for="phone" class="form-label fw-medium">Phone Number</label>
                             <div class="input-group">
                                 <span class="input-group-text bg-light text-muted"><i class="fas fa-phone"></i></span>
-                                <input type="text" class="form-control" id="phone" name="phone" placeholder="+263...">
+                                <input type="text" class="form-control" id="phone" name="phone"
+                                    value="{{ customer.phone or '' }}">
                             </div>
                         </div>
                         <div class="col-md-6 mb-4">
@@ -80,7 +82,7 @@
                                 <span class="input-group-text bg-light text-muted"><i
                                         class="fas fa-envelope"></i></span>
                                 <input type="email" class="form-control" id="email" name="email"
-                                    placeholder="email@example.com">
+                                    value="{{ customer.email or '' }}">
                             </div>
                         </div>
                     </div>
@@ -88,7 +90,7 @@
                     <div class="d-flex justify-content-end gap-2 mt-2 pt-3 border-top">
                         <a href="{{ url_for('customers') }}" class="btn btn-light">Cancel</a>
                         <button type="submit" class="btn btn-primary px-4">
-                            <i class="fas fa-save me-2"></i>Save Customer
+                            <i class="fas fa-save me-2"></i>Update Customer
                         </button>
                     </div>
                 </form>

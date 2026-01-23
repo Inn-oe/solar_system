@@ -31,18 +31,19 @@
                             </select>
                         </div>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="description" class="form-label">Description *</label>
                         <textarea class="form-control" id="description" name="description" rows="3" required></textarea>
                     </div>
-                    
+
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="amount" class="form-label">Amount *</label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
-                                <input type="number" step="0.01" class="form-control" id="amount" name="amount" required min="0">
+                                <input type="number" step="0.01" class="form-control" id="amount" name="amount" required
+                                    min="0">
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
@@ -50,7 +51,7 @@
                             <input type="date" class="form-control" id="date" name="date" required>
                         </div>
                     </div>
-                    
+
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="payment_method" class="form-label">Payment Method</label>
@@ -68,7 +69,7 @@
                             <input type="text" class="form-control" id="receipt_number" name="receipt_number">
                         </div>
                     </div>
-                    
+
                     <div class="mt-4">
                         <button type="submit" class="btn btn-primary">Add Record</button>
                         <a href="{{ url_for('financial') }}" class="btn btn-secondary">Cancel</a>
@@ -79,35 +80,37 @@
     </div>
 </div>
 
+{% endblock %}
+
 {% block scripts %}
 <script>
-function updateCategories() {
-    const type = document.getElementById('type').value;
-    const categorySelect = document.getElementById('category');
-    
-    categorySelect.innerHTML = '<option value="">Select Category</option>';
-    
-    // These categories should be dynamically loaded from the database
-    const categories = {
-        INCOME: ["Service Revenue", "Product Sales", "Installation Fees", "Maintenance Contracts", "Consultation Fees", "Other Income"],
-        EXPENSE: ["Fuel", "Car Maintenance", "Rent", "Solar Maintenance", "Services", "Employee Payments", "Utilities", "Equipment Purchase", "Other Expenses"]
-    };
+    function updateCategories() {
+        const type = document.getElementById('type').value;
+        const categorySelect = document.getElementById('category');
 
-    if (type in categories) {
-        categories[type].forEach(category => {
-            const option = document.createElement('option');
-            option.value = category;
-            option.textContent = category;
-            categorySelect.appendChild(option);
-        });
-    }
-}
+        categorySelect.innerHTML = '<option value="">Select Category</option>';
 
-// Initialize categories on page load if a type is already selected
-document.addEventListener('DOMContentLoaded', function() {
-    if (document.getElementById('type').value) {
-        updateCategories();
+        // These categories should be dynamically loaded from the database
+        const categories = {
+            INCOME: ["Service Revenue", "Product Sales", "Installation Fees", "Maintenance Contracts", "Consultation Fees", "Other Income"],
+            EXPENSE: ["Fuel", "Car Maintenance", "Rent", "Solar Maintenance", "Services", "Employee Payments", "Utilities", "Equipment Purchase", "Other Expenses"]
+        };
+
+        if (type in categories) {
+            categories[type].forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                categorySelect.appendChild(option);
+            });
+        }
     }
-});
+
+    // Initialize categories on page load if a type is already selected
+    document.addEventListener('DOMContentLoaded', function () {
+        if (document.getElementById('type').value) {
+            updateCategories();
+        }
+    });
 </script>
 {% endblock %}

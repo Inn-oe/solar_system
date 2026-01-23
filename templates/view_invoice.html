@@ -47,7 +47,7 @@
                     </div>
                     <div class="col-sm-6 text-end">
                         <h6 class="text-muted">To:</h6>
-                        <h5>{{ invoice.customer.name }}</h5>
+                        <h5>{{ invoice.customer.name }} {{ invoice.customer.surname or '' }}</h5>
                         <div>{{ invoice.customer.address }}</div>
                         <div>{{ invoice.customer.phone }}</div>
                         <div>{{ invoice.customer.email }}</div>

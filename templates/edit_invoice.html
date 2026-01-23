@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
 
-{% block title %}Create Invoice - Giebee Engineering{% endblock %}
+{% block title %}Edit Invoice - Giebee Engineering{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Create New Invoice</h2>
+    <h2>Edit Invoice #{{ invoice.id }}</h2>
     <a href="{{ url_for('invoices') }}" class="btn btn-outline-secondary">
         <i class="fas fa-arrow-left me-2"></i>Back to Invoices
     </a>
@@ -12,7 +12,7 @@
 
 <div class="card bg-transparent border-0">
     <div class="card-body p-0">
-        <form method="POST" action="{{ url_for('add_invoice') }}">
+        <form method="POST">
             <!-- Customer Section -->
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-transparent border-bottom-0 pt-4 px-4 pb-0">
@@ -25,7 +25,8 @@
                             <select class="form-select" id="activity_type_id" name="activity_type_id">
                                 <option value="">-- Select Activity Type --</option>
                                 {% for at in activity_types %}
-                                <option value="{{ at.id }}">{{ at.name }}</option>
+                                <option value="{{ at.id }}" {% if invoice.activity_type_id==at.id %}selected{% endif %}>
+                                    {{ at.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -33,29 +34,25 @@
                             <label for="customer_identification" class="form-label fw-medium">Identification Number
                                 <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="customer_identification"
-                                name="customer_identification" required list="customer-list-quotes"
-                                placeholder="Start typing ID number...">
-                            <datalist id="customer-list-quotes">
-                                {% for quote in quotations %}
-                                {% if quote.customer %}
-                                <option value="{{ quote.customer.identification_number }}">{{ quote.customer.name }} {{
-                                    quote.customer.surname or '' }}
-                                    (Quote #{{ quote.id }})</option>
-                                {% endif %}
+                                name="customer_identification" required list="customer-list"
+                                placeholder="Start typing ID number..." value="{{ invoice.customer_id }}">
+                            <datalist id="customer-list">
+                                {% for customer in customers %}
+                                <option value="{{ customer.identification_number }}">{{ customer.name }} {{
+                                    customer.surname or '' }} - {{
+                                    customer.identification_number }}</option>
                                 {% endfor %}
                             </datalist>
                         </div>
                         <div class="col-md-4">
                             <label for="customer_name_display" class="form-label fw-medium">Customer Name</label>
-                            <input type="text" class="form-control" id="customer_name_display"
-                                list="customer-name-list-quotes" placeholder="Start typing Name...">
-                            <datalist id="customer-name-list-quotes">
-                                {% for quote in quotations %}
-                                {% if quote.customer %}
-                                <option value="{{ quote.customer.name }} {{ quote.customer.surname or '' }}">ID: {{
-                                    quote.customer.identification_number }}
-                                    (Quote #{{ quote.id }})</option>
-                                {% endif %}
+                            <input type="text" class="form-control" id="customer_name_display" list="customer-name-list"
+                                placeholder="Start typing Name..."
+                                value="{{ invoice.customer.name if invoice.customer else '' }}">
+                            <datalist id="customer-name-list">
+                                {% for customer in customers %}
+                                <option value="{{ customer.name }} {{ customer.surname or '' }}">ID: {{
+                                    customer.identification_number }}</option>
                                 {% endfor %}
                             </datalist>
                         </div>
@@ -69,7 +66,6 @@
                     <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-box-open me-2"></i>Invoice Items</h5>
                 </div>
                 <div class="card-body p-4">
-                    <!-- Item Datalist -->
                     <datalist id="invoice-inventory-list">
                         {% for item in inventory_items %}
                         <option value="{{ item.name }}" data-id="{{ item.id }}" data-price="{{ item.unit_price }}">
@@ -90,33 +86,43 @@
                                 </tr>
                             </thead>
                             <tbody id="itemsBody">
+                                {% for item in invoice.items %}
                                 <tr>
                                     <td>
-                                        <input type="hidden" name="item_id[]" class="item-id">
+                                        <input type="hidden" name="item_id[]" class="item-id"
+                                            value="{{ item.inventory_id or 'custom' }}">
                                         <input type="text" class="form-control item-search" name="item_search[]"
                                             list="invoice-inventory-list"
                                             placeholder="Search item or type new item name..." required
-                                            onchange="updateItemFromSearch(this)">
+                                            onchange="updateItemFromSearch(this)"
+                                            value="{{ item.inventory.name if item.inventory else (item.description if item.inventory_id is none else item.item_code) }}">
 
                                         <input type="text" class="form-control mt-2 custom-item-name"
                                             name="custom_item_name[]" placeholder="Enter Item Name"
-                                            style="display: none;">
+                                            style="display: {{ 'block' if item.inventory_id is none else 'none' }};"
+                                            value="{{ item.description if item.inventory_id is none else '' }}">
                                     </td>
                                     <td>
                                         <input type="number" class="form-control quantity-input" name="quantity[]"
-                                            value="1" min="1" required oninput="calculateRowTotal(this)">
+                                            value="{{ item.quantity }}" min="1" required
+                                            oninput="calculateRowTotal(this)">
+                                        <input type="hidden" name="old_quantity[]" value="{{ item.quantity }}">
+                                        <input type="hidden" name="old_inventory_id[]"
+                                            value="{{ item.inventory_id or '' }}">
                                     </td>
                                     <td>
                                         <div class="input-group">
                                             <span class="input-group-text">$</span>
                                             <input type="number" class="form-control price-input" name="unit_price[]"
-                                                step="0.01" required oninput="calculateRowTotal(this)">
+                                                step="0.01" required oninput="calculateRowTotal(this)"
+                                                value="{{ item.unit_price }}">
                                         </div>
                                     </td>
                                     <td>
                                         <div class="input-group">
                                             <span class="input-group-text">$</span>
-                                            <input type="text" class="form-control total-input" readonly value="0.00">
+                                            <input type="text" class="form-control total-input" readonly
+                                                value="{{ '%.2f'|format(item.amount) }}">
                                         </div>
                                     </td>
                                     <td>
@@ -125,6 +131,7 @@
                                         </button>
                                     </td>
                                 </tr>
+                                {% endfor %}
                             </tbody>
                         </table>
                     </div>
@@ -136,14 +143,15 @@
                             </button>
                         </div>
                         <div class="col-md-6 text-end">
-                            <h4>Total Amount: $<span id="grandTotal">0.00</span></h4>
+                            <h4>Total Amount: $<span id="grandTotal">{{ '%.2f'|format(invoice.total_amount) }}</span>
+                            </h4>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="d-grid gap-2">
-                <button type="submit" class="btn btn-primary btn-lg">Create Invoice</button>
+                <button type="submit" class="btn btn-primary btn-lg">Update Invoice</button>
             </div>
         </form>
     </div>
@@ -157,14 +165,12 @@
         if (customerIdInput) {
             customerIdInput.addEventListener('input', function () {
                 const inputValue = this.value;
-                const datalist = document.getElementById('customer-list-quotes');
+                const datalist = document.getElementById('customer-list');
                 const options = datalist.options;
                 let customerName = '';
-
                 for (let i = 0; i < options.length; i++) {
                     if (options[i].value === inputValue) {
-                        const text = options[i].textContent;
-                        customerName = text.split(' (Quote #')[0].trim();
+                        customerName = options[i].textContent.split(' - ')[0];
                         break;
                     }
                 }
@@ -177,18 +183,12 @@
         if (customerNameInput) {
             customerNameInput.addEventListener('input', function () {
                 const inputValue = this.value;
-                const datalist = document.getElementById('customer-name-list-quotes');
+                const datalist = document.getElementById('customer-name-list');
                 const options = datalist.options;
                 let customerId = '';
-
                 for (let i = 0; i < options.length; i++) {
                     if (options[i].value === inputValue) {
-                        const text = options[i].textContent;
-                        // Extract ID from format: ID: XXXXX (Quote #...)
-                        const match = text.match(/ID:\s*([^\s(]*)/);
-                        if (match && match[1]) {
-                            customerId = match[1].trim();
-                        }
+                        customerId = options[i].textContent.replace('ID: ', '').trim();
                         break;
                     }
                 }
@@ -261,9 +261,7 @@
 
     function addRow() {
         const tbody = document.getElementById('itemsBody');
-        const firstRow = tbody.querySelector('tr');
         const newRow = document.createElement('tr');
-
         newRow.innerHTML = `
             <td>
                 <input type="hidden" name="item_id[]" class="item-id">
@@ -276,6 +274,8 @@
             <td>
                 <input type="number" class="form-control quantity-input" name="quantity[]"
                     value="1" min="1" required oninput="calculateRowTotal(this)">
+                <input type="hidden" name="old_quantity[]" value="0">
+                <input type="hidden" name="old_inventory_id[]" value="">
             </td>
             <td>
                 <div class="input-group">
@@ -296,7 +296,6 @@
                 </button>
             </td>
         `;
-
         tbody.appendChild(newRow);
     }
 
