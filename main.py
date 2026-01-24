@@ -483,37 +483,53 @@ def add_supplier():
 def add_customer():
     """Add new customer"""
     if request.method == 'POST':
-        id_num = request.form.get('identification_number', '').strip()
-        
-        if not id_num:
-            # Auto-generate 5-digit ID
-            from sqlalchemy import func
-            max_id_query = db_session.query(Customer.identification_number).filter(Customer.identification_number.op('GLOB')('[0-9]*')).all()
+        try:
+            id_num = request.form.get('identification_number', '').strip()
             
-            max_val = 0
-            for (id_str,) in max_id_query:
-                try:
-                    val = int(id_str)
-                    if val > max_val:
-                        max_val = val
-                except:
-                    continue
+            if not id_num:
+                # Auto-generate 5-digit ID (DB Agnostic)
+                all_ids = db_session.query(Customer.identification_number).all()
+                max_val = 0
+                for (id_str,) in all_ids:
+                    if id_str.isdigit():
+                        try:
+                            val = int(id_str)
+                            if val > max_val:
+                                max_val = val
+                        except ValueError:
+                            continue
+                
+                id_num = f"{max_val + 1:05d}"
+            else:
+                # Check if ID already exists
+                existing = db_session.query(Customer).get(id_num)
+                if existing:
+                    flash(f'Customer ID {id_num} already exists.', 'error')
+                    return redirect(url_for('add_customer'))
+
+            if not request.form.get('name'):
+                 flash('Customer Name is required.', 'error')
+                 return redirect(url_for('add_customer'))
+
+            customer = Customer(
+                name=request.form['name'],
+                surname=request.form.get('surname'),
+                identification_number=id_num,
+                citizenship=request.form.get('citizenship'),
+                address=request.form.get('address'),
+                phone=request.form.get('phone'),
+                email=request.form.get('email')
+            )
+            db_session.add(customer)
+            db_session.commit()
+            flash('Customer added successfully!', 'success')
+            return redirect(url_for('customers'))
             
-            id_num = f"{max_val + 1:05d}"
-            
-        customer = Customer(
-            name=request.form['name'],
-            surname=request.form['surname'],
-            identification_number=id_num,
-            citizenship=request.form['citizenship'],
-            address=request.form['address'],
-            phone=request.form['phone'],
-            email=request.form['email']
-        )
-        db_session.add(customer)
-        db_session.commit()
-        flash('Customer added successfully!', 'success')
-        return redirect(url_for('customers'))
+        except Exception as e:
+            db_session.rollback()
+            flash(f'Error adding customer: {str(e)}', 'error')
+            return redirect(url_for('add_customer'))
+
     return render_template('add_customer.html')
 
 @app.route('/inventory/add', methods=['GET', 'POST'])
