@@ -214,214 +214,228 @@ def activities():
 
 @app.route('/financial')
 def financial():
-    """Financial dashboard"""
+    """Financial dashboard with Accrual-based Profit Calculation"""
     # Get month and year from query parameters
     selected_month = int(request.args.get('month', datetime.now().month))
     selected_year = int(request.args.get('year', datetime.now().year))
 
-    # Calculate totals for selected period
-    from models import FinancialType
+    # Calculate date range
     start_date = datetime(selected_year, selected_month, 1)
     if selected_month == 12:
         end_date = datetime(selected_year + 1, 1, 1)
     else:
         end_date = datetime(selected_year, selected_month + 1, 1)
 
-    # Total sales from actual payments in the period
-    total_sales = db_session.query(db.func.sum(Payment.amount)).filter(
-        Payment.payment_date >= start_date,
-        Payment.payment_date < end_date
+    from models import FinancialType, InvoiceStatus
+    
+    # --- 1. KEY METRICS (ACCRUAL BASIS) ---
+    # Revenue: Total value of Invoices created in this period (regardless of payment status)
+    revenue = db_session.query(db.func.sum(Invoice.total_amount)).filter(
+        Invoice.date_created >= start_date,
+        Invoice.date_created < end_date,
+        Invoice.status != InvoiceStatus.CANCELLED
     ).scalar() or 0
 
-    # Total expenses in the period
-    total_expenses = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+    # Other Income: Non-sales income (e.g., grants, interest)
+    other_income = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+        FinancialRecord.type == FinancialType.INCOME,
+        FinancialRecord.category != 'Sales', # Exclude Sales to avoid double counting if user manually adds Sales
+        FinancialRecord.date >= start_date,
+        FinancialRecord.date < end_date
+    ).scalar() or 0
+
+    # COGS (Cost of Goods Sold): Cost price of items sold in invoices this period
+    cogs = db_session.query(db.func.sum(InvoiceItem.cost_price * InvoiceItem.quantity)).join(Invoice).filter(
+        Invoice.date_created >= start_date,
+        Invoice.date_created < end_date,
+        Invoice.status != InvoiceStatus.CANCELLED
+    ).scalar() or 0
+
+    # Expenses: Operational expenses
+    expenses = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
         FinancialRecord.type == FinancialType.EXPENSE,
         FinancialRecord.date >= start_date,
         FinancialRecord.date < end_date
     ).scalar() or 0
 
-    # Total other income in the period
-    total_income = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
-        FinancialRecord.type == FinancialType.INCOME,
-        FinancialRecord.date >= start_date,
-        FinancialRecord.date < end_date
-    ).scalar() or 0
-
-    # Additional financial metrics
-    cogs = db_session.query(db.func.sum(StockTransaction.total_value)).filter(
-        StockTransaction.transaction_type == 'STOCK_OUT',
-        StockTransaction.date_created >= start_date,
-        StockTransaction.date_created < end_date
-    ).scalar() or 0
-
-    inventory_losses = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
-        FinancialRecord.category == 'Inventory Loss',
-        FinancialRecord.date >= start_date,
-        FinancialRecord.date < end_date
-    ).scalar() or 0
-
-    total_fuel_cost = db_session.query(db.func.sum(FuelRecord.total_cost)).filter(
-        FuelRecord.date >= start_date,
-        FuelRecord.date < end_date
-    ).scalar() or 0
-
-    profit = (total_sales + total_income) - (total_expenses + abs(cogs))
-
-    # Recent transactions
-    recent_transactions = db_session.query(FinancialRecord).filter(
-        FinancialRecord.date >= start_date,
-        FinancialRecord.date < end_date
-    ).order_by(FinancialRecord.date.desc()).limit(10).all()
-
-    # --- Aggregations for Charts ---
-
-    # 1. Income by Activity Type
-    from models import ActivityType
-    income_by_activity = {}
-    activity_types = db_session.query(ActivityType).all()
-    for at in activity_types:
-        amt = db_session.query(db.func.sum(Payment.amount)).join(Invoice).filter(
-            Invoice.activity_type_id == at.id,
-            Payment.payment_date >= start_date,
-            Payment.payment_date < end_date
-        ).scalar() or 0
-        if amt > 0:
-            income_by_activity[at.name] = amt
+    # Gross Profit = Revenue - COGS
+    gross_profit = revenue - cogs
     
-    uncategorized_income = db_session.query(db.func.sum(Payment.amount)).join(Invoice).filter(
-        Invoice.activity_type_id == None,
-        Payment.payment_date >= start_date,
-        Payment.payment_date < end_date
-    ).scalar() or 0
-    if uncategorized_income > 0:
-        income_by_activity["Uncategorized Sales"] = uncategorized_income
+    # Net Profit = Gross Profit + Other Income - Expenses
+    net_profit = gross_profit + other_income - expenses
 
-    # 2. Expenses by Category
+    # Profit Breakdown Dictionary
+    profit_breakdown = {
+        'Revenue (Invoiced)': revenue,
+        'Cost of Goods Sold': -cogs,
+        'Gross Profit': gross_profit,
+        'Operating Expenses': -expenses,
+        'Other Income': other_income
+    }
+    
+    # --- 2. BREAKDOWNS ---
+
+    # A. Profit by Category (Stock vs Services)
+    # Stock Profit = Sum of (Selling Price - Cost Price) * Qty for Stock Items
+    # Service Profit = Sum of (Selling Price * Qty) for Non-Stock Items
+    
+    stock_revenue = db_session.query(db.func.sum(InvoiceItem.amount)).join(Invoice).filter(
+        Invoice.date_created >= start_date,
+        Invoice.date_created < end_date,
+        Invoice.status != InvoiceStatus.CANCELLED,
+        InvoiceItem.inventory_id.isnot(None)
+    ).scalar() or 0
+    
+    stock_cost = cogs # All COGS comes from stock items
+    stock_profit = stock_revenue - stock_cost
+
+    service_revenue = db_session.query(db.func.sum(InvoiceItem.amount)).join(Invoice).filter(
+        Invoice.date_created >= start_date,
+        Invoice.date_created < end_date,
+        Invoice.status != InvoiceStatus.CANCELLED,
+        InvoiceItem.inventory_id.is_(None)
+    ).scalar() or 0
+    
+    profit_by_source = {
+        'Stock Sales': stock_profit,
+        'Services/Labor': service_revenue # Cost is effectively 0 or captured in expenses (wages)
+    }
+
+    # B. Profit by Activity Type
+    from models import ActivityType
+    profit_by_activity = {}
+    activity_types = db_session.query(ActivityType).all()
+    
+    for at in activity_types:
+        # Get invoices for this activity type
+        inv_ids = db_session.query(Invoice.id).filter(
+            Invoice.activity_type_id == at.id, 
+            Invoice.date_created >= start_date, 
+            Invoice.date_created < end_date
+        ).all()
+        inv_ids = [i[0] for i in inv_ids]
+        
+        if inv_ids:
+            # Rev
+            act_rev = db_session.query(db.func.sum(Invoice.total_amount)).filter(Invoice.id.in_(inv_ids)).scalar() or 0
+            # Cost
+            act_cogs = db_session.query(db.func.sum(InvoiceItem.cost_price * InvoiceItem.quantity)).filter(InvoiceItem.invoice_id.in_(inv_ids)).scalar() or 0
+            
+            profit_by_activity[at.name] = act_rev - act_cogs
+
+    # Uncategorized Activities
+    uncat_rev = db_session.query(db.func.sum(Invoice.total_amount)).filter(
+        Invoice.activity_type_id == None, 
+        Invoice.date_created >= start_date, 
+        Invoice.date_created < end_date
+    ).scalar() or 0
+    if uncat_rev > 0:
+        uncat_cogs = db_session.query(db.func.sum(InvoiceItem.cost_price * InvoiceItem.quantity)).join(Invoice).filter(
+             Invoice.activity_type_id == None,
+             Invoice.date_created >= start_date, 
+             Invoice.date_created < end_date
+        ).scalar() or 0
+        profit_by_activity['General Sales'] = uncat_rev - uncat_cogs
+
+
+    # C. Expense Breakdown
     expense_breakdown = {}
-    expense_records = db_session.query(
-        FinancialRecord.category,
-        db.func.sum(FinancialRecord.amount)
-    ).filter(
+    expense_cats = db_session.query(FinancialRecord.category, db.func.sum(FinancialRecord.amount)).filter(
         FinancialRecord.type == FinancialType.EXPENSE,
         FinancialRecord.date >= start_date,
         FinancialRecord.date < end_date
     ).group_by(FinancialRecord.category).all()
     
-    for cat, amt in expense_records:
-        expense_breakdown[cat or "Other"] = amt
+    for cat, amount in expense_cats:
+        expense_breakdown[cat or 'Uncategorized'] = amount
 
-    # 3. Profit by Item Category (Gross Profit)
-    profit_by_category = {}
+    # --- 3. TRENDS & LISTS ---
     
-    # Calculate profit from invoices
-    # Profit = (Selling Price - Cost Price) * Quantity
-    invoice_items_profit = db_session.query(
-        Inventory.category,
-        db.func.sum((InvoiceItem.unit_price - InvoiceItem.cost_price) * InvoiceItem.quantity)
-    ).join(Inventory, InvoiceItem.inventory_id == Inventory.id)\
-     .join(Invoice, InvoiceItem.invoice_id == Invoice.id)\
-     .filter(
-        Invoice.date_created >= start_date,
-        Invoice.date_created < end_date,
-        Invoice.status != InvoiceStatus.CANCELLED
-    ).group_by(Inventory.category).all()
+    # Recent Transactions
+    recent_transactions = db_session.query(FinancialRecord).order_by(FinancialRecord.date.desc()).limit(10).all()
 
-    for cat, profit_amt in invoice_items_profit:
-        if profit_amt != 0:
-            profit_by_category[cat or "Uncategorized"] = profit_amt
-
-    # Profit/Loss breakdown for main chart
-    profit_breakdown = {
-        'Payments Received': total_sales,
-        'Other Income': total_income,
-        'Expenses': -total_expenses,
-        'COGS': -abs(cogs)
-    }
-
-    # Monthly revenue and expenses for trends chart
+    # Monthly Trend (Revenue vs Expenses)
     months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     monthly_revenue_data = []
     monthly_expenses_data = []
 
     for m in range(1, 13):
-        month_start = datetime(selected_year, m, 1)
+        m_start = datetime(selected_year, m, 1)
         if m == 12:
-            month_end = datetime(selected_year + 1, 1, 1)
+            m_end = datetime(selected_year + 1, 1, 1)
         else:
-            month_end = datetime(selected_year, m + 1, 1)
-
-        rev_pay = db_session.query(db.func.sum(Payment.amount)).filter(
-            Payment.payment_date >= month_start,
-            Payment.payment_date < month_end
+            m_end = datetime(selected_year, m + 1, 1)
+            
+        # Monthly Revenue (Invoiced)
+        m_rev = db_session.query(db.func.sum(Invoice.total_amount)).filter(
+            Invoice.date_created >= m_start, Invoice.date_created < m_end
         ).scalar() or 0
-        rev_inc = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
-            FinancialRecord.type == FinancialType.INCOME,
-            FinancialRecord.date >= month_start,
-            FinancialRecord.date < month_end
-        ).scalar() or 0
-        monthly_revenue_data.append(rev_pay + rev_inc)
-
-        exp = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+        monthly_revenue_data.append(m_rev)
+        
+        # Monthly Expenses
+        m_exp = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
             FinancialRecord.type == FinancialType.EXPENSE,
-            FinancialRecord.date >= month_start,
-            FinancialRecord.date < month_end
+            FinancialRecord.date >= m_start,
+            FinancialRecord.date < m_end
         ).scalar() or 0
-        monthly_expenses_data.append(exp)
-
-    # Sales by item aggregation
-    top_items_data = db_session.query(
-        InvoiceItem.description,
-        db.func.sum(InvoiceItem.amount)
-    ).join(Invoice).filter(
-        Invoice.date_created >= start_date,
-        Invoice.date_created < end_date
-    ).group_by(InvoiceItem.description).order_by(db.func.sum(InvoiceItem.amount).desc()).limit(10).all()
+        monthly_expenses_data.append(m_exp)
     
-    item_labels = [item[0] for item in top_items_data]
-    item_data = [item[1] for item in top_items_data]
+    # Top Selling Items (Revenue)
+    top_items = db_session.query(InvoiceItem.description, db.func.sum(InvoiceItem.amount)).join(Invoice).filter(
+        Invoice.date_created >= start_date, Invoice.date_created < end_date
+    ).group_by(InvoiceItem.description).order_by(db.func.sum(InvoiceItem.amount).desc()).limit(8).all()
+    
+    item_labels = [i[0] for i in top_items]
+    item_data = [i[1] for i in top_items]
 
-    # Inventory Metrics
-    total_inventory_value = db_session.query(db.func.sum(Inventory.unit_price * Inventory.quantity)).scalar() or 0
-    inventory_turnover = (abs(cogs) / total_inventory_value) if total_inventory_value > 0 else 0
-
-    # Location analytics
+    # Location Analytics (unchanged)
     location_counts = {}
-    journey_records = db_session.query(JourneyRecord).filter(
-        JourneyRecord.start_time >= start_date,
-        JourneyRecord.start_time < end_date
-    ).all()
+    journey_records = db_session.query(JourneyRecord).all() # Simplification: All time for location general stats
     for jr in journey_records:
         loc = jr.end_location or jr.start_location
         if loc:
             location_counts[loc] = location_counts.get(loc, 0) + 1
+    top_locs = sorted(location_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    location_labels = [l[0] for l in top_locs]
+    location_data = [l[1] for l in top_locs]
 
-    top_locations_list = sorted(location_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-    location_labels = [loc[0] for loc in top_locations_list]
-    location_data = [loc[1] for loc in top_locations_list]
-
+    # Inventory Metrics
+    total_inventory_value = db_session.query(db.func.sum(Inventory.unit_price * Inventory.quantity)).scalar() or 0
+    inventory_turnover = (cogs / total_inventory_value) if total_inventory_value > 0 else 0
+    
+    # Prepare data for template
+    # We map 'profit_by_category' variable in template to our new 'profit_by_activity' for backward compat or update template
+    
     return render_template('financial.html',
-                         total_sales=total_sales,
-                         profit_by_category=profit_by_category,
-                         total_expenses=total_expenses,
-                         total_income=total_income,
-                         profit=profit,
-                         recent_transactions=recent_transactions,
                          selected_month=selected_month,
                          selected_year=selected_year,
-                         cogs=cogs,
-                         inventory_losses=inventory_losses,
-                         total_fuel_cost=total_fuel_cost,
-                         inventory_turnover=inventory_turnover,
-                         profit_breakdown=profit_breakdown,
-                         income_by_activity=income_by_activity,
-                         expense_breakdown=expense_breakdown,
                          months=months,
+                         
+                         # KPIs
+                         total_sales=revenue,        # Using Revenue label
+                         total_expenses=expenses,
+                         net_profit=net_profit,
+                         gross_profit=gross_profit,
+                         other_income=other_income,
+                         
+                         # Breakdowns
+                         profit_breakdown=profit_breakdown,
+                         profit_by_activity=profit_by_activity,
+                         profit_by_source=profit_by_source,
+                         expense_breakdown=expense_breakdown,
+                         
+                         # Charts
                          monthly_revenue_data=monthly_revenue_data,
                          monthly_expenses_data=monthly_expenses_data,
                          item_labels=item_labels,
                          item_data=item_data,
                          top_locations=location_labels,
-                         location_data=location_data)
+                         location_data=location_data,
+                         
+                         # Extras
+                         recent_transactions=recent_transactions,
+                         inventory_turnover=inventory_turnover,
+                         cogs=cogs)
 
 @app.route('/fuel_tracking')
 def fuel_tracking():
@@ -822,19 +836,24 @@ def edit_quotation(quotation_id):
 def add_activity():
     """Add new activity"""
     if request.method == 'POST':
-        from models import ActivityStatusEnum, Currency
-        activity = Activity(
-            customer_id=request.form['customer_id'],
-            activity_type_id=int(request.form['activity_type_id']),
-            description=request.form['description'],
-            status=ActivityStatusEnum(request.form['status']),
-            date=datetime.strptime(request.form['date'], '%Y-%m-%d').date(),
-            currency=Currency.USD
-        )
-        db_session.add(activity)
-        db_session.commit()
-        flash('Activity added successfully!', 'success')
-        return redirect(url_for('activities'))
+        try:
+            from models import ActivityStatusEnum, Currency
+            activity = Activity(
+                customer_id=request.form['customer_id'],
+                activity_type_id=int(request.form['activity_type_id']),
+                description=request.form['description'],
+                status=ActivityStatusEnum(request.form['status']),
+                date=datetime.strptime(request.form['date'], '%Y-%m-%d').date(),
+                currency=Currency.USD
+            )
+            db_session.add(activity)
+            db_session.commit()
+            flash('Activity added successfully!', 'success')
+            return redirect(url_for('activities'))
+        except Exception as e:
+            db_session.rollback()
+            flash(f'Error adding activity: {str(e)}', 'error')
+            return redirect(url_for('add_activity'))
 
     customers = db_session.query(Customer).all()
     activity_types = db_session.query(ActivityType).filter_by(is_active=True).all()
@@ -870,15 +889,29 @@ def edit_activity(activity_id):
         return redirect(url_for('activities'))
 
     if request.method == 'POST':
-        from models import ActivityStatusEnum, Currency
-        activity.customer_id = request.form['customer_id']
-        activity.activity_type_id = int(request.form['activity_type_id'])
-        activity.description = request.form['description']
-        activity.status = ActivityStatusEnum(request.form['status'])
-        activity.date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
-        db_session.commit()
-        flash('Activity updated successfully!', 'success')
-        return redirect(url_for('activities'))
+        try:
+            from models import ActivityStatusEnum, Currency
+            activity.customer_id = request.form['customer_id']
+            activity.activity_type_id = int(request.form['activity_type_id'])
+            activity.description = request.form['description']
+            activity.status = ActivityStatusEnum(request.form['status'])
+            activity.date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
+            
+            # Optional fields
+            activity.technician = request.form.get('technician')
+            if request.form.get('total_cost'):
+                activity.total_cost = float(request.form['total_cost'])
+            if request.form.get('currency'):
+                activity.currency = Currency(request.form['currency'])
+            activity.notes = request.form.get('notes')
+
+            db_session.commit()
+            flash('Activity updated successfully!', 'success')
+            return redirect(url_for('activities'))
+        except Exception as e:
+            db_session.rollback()
+            flash(f'Error updating activity: {str(e)}', 'error')
+            return redirect(url_for('edit_activity', activity_id=activity_id))
 
     customers = db_session.query(Customer).all()
     activity_types = db_session.query(ActivityType).filter_by(is_active=True).all()

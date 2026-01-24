@@ -1,442 +1,319 @@
 {% extends "base.html" %}
 
-{% block title %}Financial Dashboard - Giebee Engineering{% endblock %}
+{% block title %}Financial Overview - Giebee Engineering{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">Financial Dashboard</h1>
-    <div class="d-flex align-items-center">
-        <form action="{{ url_for('financial') }}" method="get" class="d-flex me-2">
-            <select name="month" class="form-select me-2">
-                {% for i in range(1, 13) %}
-                <option value="{{ i }}" {% if i==selected_month %}selected{% endif %}>{{ i }}</option>
+    <h1 class="h2">Financial Overview</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <form class="d-flex align-items-center" method="GET">
+            <select name="month" class="form-select form-select-sm me-2">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {% if m==selected_month %}selected{% endif %}>
+                    {{ months[m-1] }}
+                </option>
                 {% endfor %}
             </select>
-            <select name="year" class="form-select me-2">
-                {% for i in range(2023, 2031) %}
-                <option value="{{ i }}" {% if i==selected_year %}selected{% endif %}>{{ i }}</option>
+            <select name="year" class="form-select form-select-sm me-2">
+                {% for y in range(2023, 2030) %}
+                <option value="{{ y }}" {% if y==selected_year %}selected{% endif %}>{{ y }}</option>
                 {% endfor %}
             </select>
-            <button type="submit" class="btn btn-primary">Go</button>
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
         </form>
-        <a href="{{ url_for('financial', reset=True) }}" class="btn btn-secondary me-2">Reset</a>
-        <a href="{{ url_for('financial_categories') }}" class="btn btn-outline-primary me-2">
-            <i class="fas fa-tags me-2"></i>Manage Categories
-        </a>
-        <a href="{{ url_for('add_financial_record') }}" class="btn btn-primary">
-            <i class="fas fa-plus me-2"></i>Add Transaction
-        </a>
+        <div class="dropdown ms-2">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="exportDropdown"
+                data-bs-toggle="dropdown">
+                Export
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item"
+                        href="{{ url_for('generate_income_statement', month=selected_month, year=selected_year) }}">Income
+                        Statement (PDF)</a></li>
+                <li><a class="dropdown-item"
+                        href="{{ url_for('generate_balance_sheet', month=selected_month, year=selected_year) }}">Balance
+                        Sheet (PDF)</a></li>
+            </ul>
+        </div>
     </div>
 </div>
 
+<!-- KPI Cards -->
+<div class="row g-4 mb-4">
+    <!-- Net Profit -->
+    <div class="col-md-3">
+        <div
+            class="card h-100 border-start border-4 {% if net_profit >= 0 %}border-success{% else %}border-danger{% endif %} shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="card-subtitle text-muted">Net Profit</h6>
+                    <i
+                        class="fas fa-chart-line {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %} fa-lg"></i>
+                </div>
+                <h3 class="card-title mb-0 {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    ${{ "%.2f"|format(net_profit) }}
+                </h3>
+                <small class="text-muted">Revenue - COGS - Expenses</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Revenue -->
+    <div class="col-md-3">
+        <div class="card h-100 border-start border-4 border-primary shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="card-subtitle text-muted">Revenue (Invoiced)</h6>
+                    <i class="fas fa-file-invoice-dollar text-primary fa-lg"></i>
+                </div>
+                <h3 class="card-title mb-0 text-primary">${{ "%.2f"|format(total_sales) }}</h3>
+                <small class="text-muted">Total Invoiced Amount</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- COGS -->
+    <div class="col-md-3">
+        <div class="card h-100 border-start border-4 border-warning shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="card-subtitle text-muted">Cost of Goods Sold</h6>
+                    <i class="fas fa-boxes text-warning fa-lg"></i>
+                </div>
+                <h3 class="card-title mb-0 text-dark">${{ "%.2f"|format(cogs) }}</h3>
+                <small class="text-muted">Cost of items sold</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expenses -->
+    <div class="col-md-3">
+        <div class="card h-100 border-start border-4 border-danger shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="card-subtitle text-muted">Op. Expenses</h6>
+                    <i class="fas fa-wallet text-danger fa-lg"></i>
+                </div>
+                <h3 class="card-title mb-0 text-danger">${{ "%.2f"|format(total_expenses) }}</h3>
+                <small class="text-muted">Operating Costs</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 1 -->
 <div class="row mb-4">
-    <div class="col-xl-3 col-md-6 mb-4">
-        <div class="card text-white bg-success shadow h-100">
+    <!-- Profit Breakdown (Cascade) -->
+    <div class="col-lg-8 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0">Financial Waterfall</h5>
+            </div>
             <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <div class="text-uppercase mb-1">Payments Received (Sales)</div>
-                        <div class="h5 mb-0 fw-bold">${{ "%.2f"|format(total_sales) }}</div>
-                    </div>
-                    <i class="fas fa-dollar-sign fa-2x"></i>
-                </div>
+                <canvas id="profitWaterfallChart"></canvas>
             </div>
         </div>
     </div>
 
-    <div class="col-xl-3 col-md-6 mb-4">
-        <div class="card text-white bg-info shadow h-100">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <div class="text-uppercase mb-1">Other Income</div>
-                        <div class="h5 mb-0 fw-bold">${{ "%.2f"|format(total_income) }}</div>
-                    </div>
-                    <i class="fas fa-plus fa-2x"></i>
-                </div>
+    <!-- Profit by Activity -->
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0">Profit by Activity</h5>
             </div>
-        </div>
-    </div>
-
-    <div class="col-xl-3 col-md-6 mb-4">
-        <div class="card text-white bg-warning shadow h-100">
             <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <div class="text-uppercase mb-1">Total Expenses</div>
-                        <div class="h5 mb-0 fw-bold">${{ "%.2f"|format(total_expenses) }}</div>
-                    </div>
-                    <i class="fas fa-minus fa-2x"></i>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-xl-3 col-md-6 mb-4">
-        <div class="card text-white bg-{{ 'success' if profit >= 0 else 'danger' }} shadow h-100">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <div class="text-uppercase mb-1">Net Profit</div>
-                        <div class="h5 mb-0 fw-bold">${{ "%.2f"|format(profit) }}</div>
-                    </div>
-                    <i class="fas fa-chart-line fa-2x"></i>
-                </div>
+                <canvas id="profitByActivityChart"></canvas>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row">
-    <div class="col-lg-6 mb-4">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-                <h6 class="m-0 fw-bold">Monthly Revenue & Expenses</h6>
+<!-- Charts Row 2 -->
+<div class="row mb-4">
+    <!-- Profit Source (Stock vs Service) -->
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0">Profit Source</h5>
             </div>
-            <div class="card-body">
-                <canvas id="monthlyChart"></canvas>
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6 mb-4">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-                <h6 class="m-0 fw-bold">Profit/Loss Breakdown</h6>
-            </div>
-            <div class="card-body">
-                <canvas id="profitLossChart"></canvas>
+            <div class="card-body text-center">
+                <canvas id="profitSourceChart"></canvas>
             </div>
         </div>
     </div>
-</div>
 
-<div class="row">
-    <div class="col-lg-6 mb-4">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-                <h6 class="m-0 fw-bold">Sales by Activity Type</h6>
-            </div>
-            <div class="card-body">
-                <canvas id="activityChart"></canvas>
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6 mb-4">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-                <h6 class="m-0 fw-bold">Expense Breakdown</h6>
-            </div>
-            <div class="card-body">
-                <canvas id="expenseChart"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-lg-6 mb-4">
-        <div class="card shadow">
-            <div class="card-header bg-success text-white">
-                <h6 class="m-0 fw-bold">Profit by Item Category</h6>
-            </div>
-            <div class="card-body">
-                <canvas id="profitCategoryChart"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-lg-6 mb-4">
-        <div class="card shadow">
-            <div class="card-header bg-secondary text-white">
-                <h6 class="m-0 fw-bold">Most Visited Locations</h6>
-            </div>
-            <div class="card-body">
-                <canvas id="locationChart"></canvas>
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6 mb-4">
-        <div class="card shadow">
-            <div class="card-header bg-secondary text-white">
-                <h6 class="m-0 fw-bold">Sales by Item</h6>
-            </div>
-            <div class="card-body">
-                <canvas id="itemChart"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-lg-6">
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary text-white">
-                <h6 class="m-0 fw-bold">Recent Transactions</h6>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Date</th>
-                                <th>Type</th>
-                                <th>Category</th>
-                                <th class="text-end">Amount</th>
-                                <th class="text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for transaction in recent_transactions %}
-                            <tr>
-                                <td>{{ transaction.date }}</td>
-                                <td>
-                                    <span
-                                        class="badge bg-{{ 'success' if transaction.type.name == 'INCOME' else 'danger' }}">
-                                        {{ transaction.type.name }}
-                                    </span>
-                                </td>
-                                <td>{{ transaction.category or '-' }}</td>
-                                <td class="text-end">${{ "%.2f"|format(transaction.amount) }}</td>
-                                <td class="text-center">
-                                    <form action="{{ url_for('delete_financial_record', record_id=transaction.id) }}"
-                                        method="post"
-                                        onsubmit="return confirm('Are you sure you want to delete this record?');">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="5" class="text-center">No recent transactions</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+    <!-- Expenses Breakdown -->
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Expense Breakdown</h5>
+                    <a href="{{ url_for('add_financial_record') }}" class="btn btn-sm btn-outline-danger">+ Expense</a>
                 </div>
             </div>
+            <div class="card-body">
+                <canvas id="expenseBreakdownChart"></canvas>
+            </div>
         </div>
     </div>
 
-    <div class="col-lg-6">
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary text-white">
-                <h6 class="m-0 fw-bold">Financial Reports & Summary</h6>
+    <!-- Inventory Turnover / Metrics -->
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0">Performance Metrics</h5>
             </div>
             <div class="card-body">
-                <div class="list-group mb-4">
-                    <a href="{{ url_for('generate_income_statement', month=selected_month, year=selected_year) }}"
-                        class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                        Download Income Statement
-                        <i class="fas fa-file-alt"></i>
-                    </a>
-                    <a href="{{ url_for('generate_balance_sheet', month=selected_month, year=selected_year) }}"
-                        class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                        Download Balance Sheet
-                        <i class="fas fa-balance-scale"></i>
-                    </a>
-                </div>
-                <table class="table table-sm table-bordered">
-                    <thead class="table-light">
-                        <tr>
-                            <th colspan="2">Financial Summary</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>COGS:</td>
-                            <td class="text-end">${{ "%.2f"|format(cogs) }}</td>
-                        </tr>
-                        <tr>
-                            <td>Inventory Losses:</td>
-                            <td class="text-end">${{ "%.2f"|format(inventory_losses) }}</td>
-                        </tr>
-                        <tr>
-                            <td>Total Fuel Cost:</td>
-                            <td class="text-end">${{ "%.2f"|format(total_fuel_cost) }}</td>
-                        </tr>
-                        <tr>
-                            <td>Inventory Turnover:</td>
-                            <td class="text-end">{{ "%.2f"|format(inventory_turnover) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Gross Profit Margin
+                        <span class="fw-bold">
+                            {% if total_sales > 0 %}
+                            {{ "%.1f"|format((gross_profit / total_sales) * 100) }}%
+                            {% else %}0%{% endif %}
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Net Profit Margin
+                        <span class="fw-bold">
+                            {% if total_sales > 0 %}
+                            {{ "%.1f"|format((net_profit / total_sales) * 100) }}%
+                            {% else %}0%{% endif %}
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Inventory Turnover
+                        <span class="fw-bold">{{ "%.2f"|format(inventory_turnover) }}x</span>
+                    </li>
+                </ul>
             </div>
         </div>
     </div>
 </div>
 
-{% endblock %}
+<!-- Recent Transactions Table -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Recent Transactions</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in recent_transactions %}
+                    <tr>
+                        <td>{{ record.date.strftime('%d-%m-%Y') }}</td>
+                        <td>
+                            <span
+                                class="badge {% if record.type.value == 'INCOME' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ record.type.value }}
+                            </span>
+                        </td>
+                        <td>{{ record.category }}</td>
+                        <td>{{ record.description }}</td>
+                        <td class="text-end fw-bold">${{ "%.2f"|format(record.amount) }}</td>
+                        <td class="text-end">
+                            <form method="POST" action="{{ url_for('delete_financial_record', record_id=record.id) }}"
+                                style="display:inline;" onsubmit="return confirm('Delete this record?');">
+                                <button class="btn btn-sm btn-link text-danger p-0"><i
+                                        class="fas fa-times"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-{% block scripts %}
+<!-- Charts Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const chartColors = ['#36A2EB', '#FF6384', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF'];
-
-        // Location Chart
-        const locationCtx = document.getElementById('locationChart').getContext('2d');
-        new Chart(locationCtx, {
-            type: 'bar',
-            data: {
-                labels: {{ top_locations| tojson }},
-        datasets: [{
-            label: 'Number of Visits',
-            data: {{ location_data| tojson }},
-        backgroundColor: chartColors
-            }]
-        },
-        options: {
-        responsive: true,
-        plugins: {
-            legend: { display: false }
-        },
-        scales: {
-            y: { beginAtZero: true }
-        }
-    }
-    });
-
-    // Profit/Loss Chart
-    const profitLossCtx = document.getElementById('profitLossChart').getContext('2d');
-    new Chart(profitLossCtx, {
+    // --- 1. Waterfall / Combo Chart for Profit Overview
+    const ctxProfit = document.getElementById('profitWaterfallChart').getContext('2d');
+    new Chart(ctxProfit, {
         type: 'bar',
         data: {
-            labels: {{ profit_breakdown.keys() | list | tojson }},
-        datasets: [{
-            label: 'Amount',
-            data: {{ profit_breakdown.values() | list | tojson }},
-        backgroundColor: chartColors
-            }]
-        },
-        options: {
-        responsive: true,
-        plugins: {
-            legend: { display: false }
-        },
-        scales: {
-            y: { beginAtZero: true }
-        }
-    }
-    });
-
-    // Monthly Chart
-    const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
-    new Chart(monthlyCtx, {
-        type: 'line',
-        data: {
-            labels: {{ months| tojson }},
-        datasets: [{
+            labels: {{ months | tojson }},
+        datasets: [
+        {
             label: 'Revenue',
-            data: {{ monthly_revenue_data| tojson }},
-        borderColor: '#36A2EB',
-        backgroundColor: 'rgba(54, 162, 235, 0.2)',
-        fill: true
-            }, {
+            data: {{ monthly_revenue_data | tojson }},
+        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+        borderWidth: 1
+                },
+        {
             label: 'Expenses',
-            data: {{ monthly_expenses_data| tojson }},
-        borderColor: '#FF6384',
-        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-        fill: true
-            }]
+            data: {{ monthly_expenses_data | tojson }},
+        backgroundColor: 'rgba(255, 99, 132, 0.6)',
+        borderColor: 'rgba(255, 99, 132, 1)',
+        borderWidth: 1
+                }
+    ]
         },
         options: {
         responsive: true,
-        scales: {
-            y: { beginAtZero: true }
-        }
+        scales: { y: { beginAtZero: true } }
     }
     });
 
-    // Item Profit Chart
-    const itemCtx = document.getElementById('itemChart').getContext('2d');
-    new Chart(itemCtx, {
-        type: 'bar',
+    // --- 2. Profit by Activity (Doughnut)
+    const ctxActivity = document.getElementById('profitByActivityChart').getContext('2d');
+    new Chart(ctxActivity, {
+        type: 'doughnut',
         data: {
-            labels: {{ item_labels| tojson }},
+            labels: {{ profit_by_activity.keys() | list | tojson }},
         datasets: [{
-            label: 'Sales Amount',
-            data: {{ item_data| tojson }},
-        backgroundColor: chartColors
+            data: {{ profit_by_activity.values() | list | tojson }},
+        backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#858796'],
+        hoverOffset: 4
             }]
-        },
-        options: {
-        responsive: true,
-        plugins: {
-            legend: { display: false }
-        },
-        scales: {
-            y: { beginAtZero: true }
         }
-    }
     });
 
-    // Activity Sales Chart
-    const activityCtx = document.getElementById('activityChart').getContext('2d');
-    new Chart(activityCtx, {
-        type: 'bar',
-        data: {
-            labels: {{ income_by_activity.keys() | list | tojson }},
-        datasets: [{
-            label: 'Sales ($)',
-            data: {{ income_by_activity.values() | list | tojson }},
-        backgroundColor: chartColors
-            }]
-        },
-        options: {
-        responsive: true,
-        plugins: {
-            legend: { display: false }
-        },
-        scales: {
-            y: { beginAtZero: true }
-        }
-    }
-    });
-
-    // Expense Breakdown Chart
-    const expenseCtx = document.getElementById('expenseChart').getContext('2d');
-    new Chart(expenseCtx, {
+    // --- 3. Profit Source (Stock vs Service) (Pie)
+    const ctxSource = document.getElementById('profitSourceChart').getContext('2d');
+    new Chart(ctxSource, {
         type: 'pie',
+        data: {
+            labels: {{ profit_by_source.keys() | list | tojson }},
+        datasets: [{
+            data: {{ profit_by_source.values() | list | tojson }},
+        backgroundColor: ['#36a2eb', '#ffce56'],
+            }]
+        }
+    });
+
+    // --- 4. Expense Breakdown (Polar Area)
+    const ctxExpenses = document.getElementById('expenseBreakdownChart').getContext('2d');
+    new Chart(ctxExpenses, {
+        type: 'polarArea',
         data: {
             labels: {{ expense_breakdown.keys() | list | tojson }},
         datasets: [{
             data: {{ expense_breakdown.values() | list | tojson }},
-        backgroundColor: chartColors
+        backgroundColor: [
+            'rgba(255, 99, 132, 0.7)',
+            'rgba(75, 192, 192, 0.7)',
+            'rgba(255, 205, 86, 0.7)',
+            'rgba(201, 203, 207, 0.7)',
+            'rgba(54, 162, 235, 0.7)'
+        ]
             }]
-        },
-        options: {
-        responsive: true,
-        plugins: {
-            legend: { position: 'right' }
         }
-    }
     });
-
-    // Profit by Category Chart
-    const profitCategoryCtx = document.getElementById('profitCategoryChart').getContext('2d');
-    new Chart(profitCategoryCtx, {
-        type: 'bar',
-        data: {
-            labels: {{ profit_by_category.keys() | list | tojson }},
-        datasets: [{
-            label: 'Gross Profit ($)',
-            data: {{ profit_by_category.values() | list | tojson }},
-        backgroundColor: chartColors
-            }]
-        },
-        options: {
-        responsive: true,
-        plugins: {
-            legend: { display: false }
-        },
-        scales: {
-            y: { beginAtZero: true }
-        }
-    }
-    });
-});
 </script>
+
 {% endblock %}

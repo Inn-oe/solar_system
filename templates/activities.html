@@ -34,7 +34,7 @@
                     {% for activity in activities %}
                     <tr>
                         <td>{{ activity.customer.name if activity.customer else '-' }}</td>
-                        <td>{{ activity.activity_type_ref.name if activity.activity_type_ref else '-' }}</td>
+                        <td>{{ activity.activity_type.name if activity.activity_type else '-' }}</td>
                         <td>{{ activity.description[:50] }}{% if activity.description|length > 50 %}...{% endif %}</td>
                         <td class="text-center">
                             <span class="badge rounded-pill

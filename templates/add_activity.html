@@ -21,7 +21,7 @@
                             <select class="form-select" id="customer_id" name="customer_id" required>
                                 <option value="">Select Customer</option>
                                 {% for customer in customers %}
-                                <option value="{{ customer.id }}">{{ customer.name }}</option>
+                                <option value="{{ customer.identification_number }}">{{ customer.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -35,12 +35,12 @@
                             </select>
                         </div>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="description" class="form-label">Description *</label>
                         <textarea class="form-control" id="description" name="description" rows="3" required></textarea>
                     </div>
-                    
+
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="status" class="form-label">Status</label>
@@ -56,7 +56,7 @@
                             <input type="date" class="form-control" id="date" name="date" required>
                         </div>
                     </div>
-                    
+
                     <div class="mt-4">
                         <button type="submit" class="btn btn-primary">Add Activity</button>
                         <a href="{{ url_for('activities') }}" class="btn btn-secondary">Cancel</a>
