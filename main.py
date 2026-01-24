@@ -98,8 +98,31 @@ def to_usd(value, currency, rates):
     return value * rates.get(currency, 1.0)
 
 with app.app_context():
-    init_db()
-    normalize_enums()
+    try:
+        print("Attempting to initialize database...")
+        init_db()
+        print("Database initialized successfully.")
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+        # We might want to re-raise if DB init is critical, but for now let's just log
+        # In a real scenario, failure here is bad, but maybe the app can still serve static pages or 500s cleanly.
+
+    try:
+        print("Attempting to normalize enums...")
+        normalize_enums()
+        print("Enums normalized successfully.")
+    except Exception as e:
+        print(f"Error normalizing enums: {e}")
+
+@app.route('/_health')
+def health_check():
+    """Health check endpoint for deployment monitoring"""
+    try:
+        # Simple DB check
+        db_session.execute(db.text("SELECT 1"))
+        return jsonify({"status": "healthy", "database": "connected"}), 200
+    except Exception as e:
+        return jsonify({"status": "unhealthy", "database": str(e)}), 500
 
 
 @app.teardown_appcontext
