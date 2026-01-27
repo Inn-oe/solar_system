@@ -28,6 +28,18 @@ app.wsgi_app = WhiteNoise(app.wsgi_app, root='static/', prefix='static/')
 # setup a secret key, required by sessions
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or "solar_company_secret_key"
 
+def generate_document_number(customer, model_class):
+    """Generate ID: [Prefix][IdentificationNumber][Suffix if count > 0]"""
+    from models import Customer
+    prefix = (customer.name[:2].upper() if customer.name else 'XX')
+    base_code = f"{prefix}{customer.identification_number}"
+    
+    # Check current count for this customer to determine sequence
+    count = db_session.query(model_class).filter_by(customer_id=customer.identification_number).count()
+    if count == 0:
+        return base_code
+    return f"{base_code}{count}"
+
 def normalize_enums():
     """Normalize enum strings in DB to match SQLAlchemy Enum definitions"""
     # Normalize quotation.status to uppercase values
@@ -239,46 +251,32 @@ def financial():
     # Other Income: Non-sales income (e.g., grants, interest)
     other_income = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
         FinancialRecord.type == FinancialType.INCOME,
-        FinancialRecord.category != 'Sales', # Exclude Sales to avoid double counting if user manually adds Sales
+        FinancialRecord.category != 'Sales', 
         FinancialRecord.date >= start_date,
         FinancialRecord.date < end_date
     ).scalar() or 0
 
-    # COGS (Cost of Goods Sold): Cost price of items sold in invoices this period
-    cogs = db_session.query(db.func.sum(InvoiceItem.cost_price * InvoiceItem.quantity)).join(Invoice).filter(
-        Invoice.date_created >= start_date,
-        Invoice.date_created < end_date,
-        Invoice.status != InvoiceStatus.CANCELLED
-    ).scalar() or 0
-
-    # Expenses: Operational expenses
+    # Expenses: Operating expenses
     expenses = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
         FinancialRecord.type == FinancialType.EXPENSE,
         FinancialRecord.date >= start_date,
         FinancialRecord.date < end_date
     ).scalar() or 0
 
-    # Gross Profit = Revenue - COGS
-    gross_profit = revenue - cogs
+    # Total Income = Revenue + Other Income
+    total_income = revenue + other_income
     
-    # Net Profit = Gross Profit + Other Income - Expenses
-    net_profit = gross_profit + other_income - expenses
-
-    # Profit Breakdown Dictionary
-    profit_breakdown = {
-        'Revenue (Invoiced)': revenue,
-        'Cost of Goods Sold': -cogs,
-        'Gross Profit': gross_profit,
+    # Financial Breakdown Dictionary
+    financial_breakdown = {
+        'Sales Revenue': revenue,
+        'Other Income': other_income,
         'Operating Expenses': -expenses,
-        'Other Income': other_income
+        'Total Income': total_income
     }
     
     # --- 2. BREAKDOWNS ---
 
-    # A. Profit by Category (Stock vs Services)
-    # Stock Profit = Sum of (Selling Price - Cost Price) * Qty for Stock Items
-    # Service Profit = Sum of (Selling Price * Qty) for Non-Stock Items
-    
+    # A. Income by Source (Stock vs Services)
     stock_revenue = db_session.query(db.func.sum(InvoiceItem.amount)).join(Invoice).filter(
         Invoice.date_created >= start_date,
         Invoice.date_created < end_date,
@@ -286,9 +284,6 @@ def financial():
         InvoiceItem.inventory_id.isnot(None)
     ).scalar() or 0
     
-    stock_cost = cogs # All COGS comes from stock items
-    stock_profit = stock_revenue - stock_cost
-
     service_revenue = db_session.query(db.func.sum(InvoiceItem.amount)).join(Invoice).filter(
         Invoice.date_created >= start_date,
         Invoice.date_created < end_date,
@@ -296,46 +291,36 @@ def financial():
         InvoiceItem.inventory_id.is_(None)
     ).scalar() or 0
     
-    profit_by_source = {
-        'Stock Sales': stock_profit,
-        'Services/Labor': service_revenue # Cost is effectively 0 or captured in expenses (wages)
+    income_by_source = {
+        'Stock Sales': stock_revenue,
+        'Services/Labor': service_revenue
     }
 
-    # B. Profit by Activity Type
+    # B. Income by Activity Type
     from models import ActivityType
-    profit_by_activity = {}
+    income_by_activity = {}
     activity_types = db_session.query(ActivityType).all()
     
     for at in activity_types:
-        # Get invoices for this activity type
-        inv_ids = db_session.query(Invoice.id).filter(
+        # Get income for this activity type
+        act_rev = db_session.query(db.func.sum(Invoice.total_amount)).filter(
             Invoice.activity_type_id == at.id, 
             Invoice.date_created >= start_date, 
-            Invoice.date_created < end_date
-        ).all()
-        inv_ids = [i[0] for i in inv_ids]
-        
-        if inv_ids:
-            # Rev
-            act_rev = db_session.query(db.func.sum(Invoice.total_amount)).filter(Invoice.id.in_(inv_ids)).scalar() or 0
-            # Cost
-            act_cogs = db_session.query(db.func.sum(InvoiceItem.cost_price * InvoiceItem.quantity)).filter(InvoiceItem.invoice_id.in_(inv_ids)).scalar() or 0
+            Invoice.date_created < end_date,
+            Invoice.status != InvoiceStatus.CANCELLED
+        ).scalar() or 0
+        if act_rev > 0:
+            income_by_activity[at.name] = act_rev
             
-            profit_by_activity[at.name] = act_rev - act_cogs
-
-    # Uncategorized Activities
+    # General Sales (Uncategorized)
     uncat_rev = db_session.query(db.func.sum(Invoice.total_amount)).filter(
         Invoice.activity_type_id == None, 
         Invoice.date_created >= start_date, 
-        Invoice.date_created < end_date
+        Invoice.date_created < end_date,
+        Invoice.status != InvoiceStatus.CANCELLED
     ).scalar() or 0
     if uncat_rev > 0:
-        uncat_cogs = db_session.query(db.func.sum(InvoiceItem.cost_price * InvoiceItem.quantity)).join(Invoice).filter(
-             Invoice.activity_type_id == None,
-             Invoice.date_created >= start_date, 
-             Invoice.date_created < end_date
-        ).scalar() or 0
-        profit_by_activity['General Sales'] = uncat_rev - uncat_cogs
+        income_by_activity['General Sales'] = uncat_rev
 
 
     # C. Expense Breakdown
@@ -368,7 +353,8 @@ def financial():
             
         # Monthly Revenue (Invoiced)
         m_rev = db_session.query(db.func.sum(Invoice.total_amount)).filter(
-            Invoice.date_created >= m_start, Invoice.date_created < m_end
+            Invoice.date_created >= m_start, Invoice.date_created < m_end,
+            Invoice.status != InvoiceStatus.CANCELLED
         ).scalar() or 0
         monthly_revenue_data.append(m_rev)
         
@@ -390,7 +376,7 @@ def financial():
 
     # Location Analytics (unchanged)
     location_counts = {}
-    journey_records = db_session.query(JourneyRecord).all() # Simplification: All time for location general stats
+    journey_records = db_session.query(JourneyRecord).all() 
     for jr in journey_records:
         loc = jr.end_location or jr.start_location
         if loc:
@@ -399,29 +385,21 @@ def financial():
     location_labels = [l[0] for l in top_locs]
     location_data = [l[1] for l in top_locs]
 
-    # Inventory Metrics
-    total_inventory_value = db_session.query(db.func.sum(Inventory.unit_price * Inventory.quantity)).scalar() or 0
-    inventory_turnover = (cogs / total_inventory_value) if total_inventory_value > 0 else 0
-    
-    # Prepare data for template
-    # We map 'profit_by_category' variable in template to our new 'profit_by_activity' for backward compat or update template
-    
     return render_template('financial.html',
                          selected_month=selected_month,
                          selected_year=selected_year,
                          months=months,
                          
                          # KPIs
-                         total_sales=revenue,        # Using Revenue label
+                         total_sales=revenue,        
                          total_expenses=expenses,
-                         net_profit=net_profit,
-                         gross_profit=gross_profit,
+                         total_income=total_income,
                          other_income=other_income,
                          
                          # Breakdowns
-                         profit_breakdown=profit_breakdown,
-                         profit_by_activity=profit_by_activity,
-                         profit_by_source=profit_by_source,
+                         financial_breakdown=financial_breakdown,
+                         income_by_activity=income_by_activity,
+                         income_by_source=income_by_source,
                          expense_breakdown=expense_breakdown,
                          
                          # Charts
@@ -433,9 +411,7 @@ def financial():
                          location_data=location_data,
                          
                          # Extras
-                         recent_transactions=recent_transactions,
-                         inventory_turnover=inventory_turnover,
-                         cogs=cogs)
+                         recent_transactions=recent_transactions)
 
 @app.route('/fuel_tracking')
 def fuel_tracking():
@@ -550,10 +526,14 @@ def add_customer():
 def add_inventory():
     """Add new inventory item"""
     if request.method == 'POST':
+        category = request.form['category']
+        if category == 'Other':
+            category = request.form.get('new_category', 'Other')
+
         item = Inventory(
             name=request.form['name'],
             brand=request.form['brand'],
-            category=request.form['category'],
+            category=category,
             specifications=request.form['specifications'],
             quantity=int(request.form['quantity']),
             unit_price=float(request.form['unit_price']),
@@ -589,9 +569,13 @@ def edit_inventory(inventory_id):
         return redirect(url_for('inventory'))
     
     if request.method == 'POST':
+        category = request.form['category']
+        if category == 'Other':
+            category = request.form.get('new_category', 'Other')
+
         item.name = request.form['name']
         item.brand = request.form['brand']
-        item.category = request.form['category']
+        item.category = category
         item.specifications = request.form['specifications']
         item.quantity = int(request.form['quantity'])
         item.unit_price = float(request.form['unit_price'])
@@ -682,7 +666,10 @@ def add_quotation():
                 status='PENDING'
             )
             db_session.add(new_quotation)
-            db_session.flush()  # Get quotation ID without committing
+            db_session.flush()
+            
+            # Set custom sequence-aware quotation number
+            new_quotation.quotation_number = generate_document_number(customer, quotation)
 
             # Create quotation items (Stock deduction MOVED to Invoice creation)
             for item_data in quotation_items_data:
@@ -1375,12 +1362,13 @@ def add_pricing():
     if request.method == 'POST':
         from models import Currency
         pricing = Pricing(
-            service_name=request.form['service_name'],
-            description=request.form['description'],
+            item_type=request.form['item_type'],
+            item_name=request.form['item_name'],
             price=float(request.form['price']),
-            currency=Currency(request.form['currency']) if request.form['currency'] else Currency.USD,
+            currency=Currency(request.form['currency']) if request.form.get('currency') else Currency.USD,
             unit=request.form['unit'],
-            effective_date=datetime.strptime(request.form['effective_date'], '%Y-%m-%d').date(),
+            effective_date=datetime.strptime(request.form['effective_date'], '%Y-%m-%d'),
+            expiry_date=datetime.strptime(request.form['expiry_date'], '%Y-%m-%d') if request.form.get('expiry_date') else None,
             notes=request.form.get('notes', '')
         )
         db_session.add(pricing)
@@ -1388,6 +1376,31 @@ def add_pricing():
         flash('Pricing record added successfully!', 'success')
         return redirect(url_for('pricing'))
     return render_template('add_pricing.html')
+
+@app.route('/pricing/edit/<int:pricing_id>', methods=['GET', 'POST'])
+def edit_pricing(pricing_id):
+    """Edit existing pricing record"""
+    pricing = db_session.query(Pricing).get(pricing_id)
+    if not pricing:
+        flash('Pricing record not found!', 'error')
+        return redirect(url_for('pricing'))
+        
+    if request.method == 'POST':
+        from models import Currency
+        pricing.item_type = request.form['item_type']
+        pricing.item_name = request.form['item_name']
+        pricing.price = float(request.form['price'])
+        pricing.currency = Currency(request.form['currency']) if request.form.get('currency') else Currency.USD
+        pricing.unit = request.form['unit']
+        pricing.effective_date = datetime.strptime(request.form['effective_date'], '%Y-%m-%d')
+        pricing.expiry_date = datetime.strptime(request.form['expiry_date'], '%Y-%m-%d') if request.form.get('expiry_date') else None
+        pricing.notes = request.form.get('notes', '')
+        
+        db_session.commit()
+        flash('Pricing record updated successfully!', 'success')
+        return redirect(url_for('pricing'))
+        
+    return render_template('edit_pricing.html', record=pricing)
 
 @app.route('/pricing/delete/<int:pricing_id>', methods=['POST'])
 def delete_pricing(pricing_id):
@@ -1732,30 +1745,34 @@ def generate_quotation_pdf(quotation_id):
         if item.inventory_id:
             inventory = db_session.query(Inventory).get(item.inventory_id)
             item_name = inventory.name if inventory else "Unknown Item"
-            item_code = inventory.specifications if inventory else "N/A"
+            item_code = inventory.specifications or (inventory.brand if inventory else "N/A")
         else:
             item_name = item.description or "Custom Item"
-            item_code = "Custom"
+            item_code = item.item_code or "Custom"
+        
         quantity = item.quantity
         total_quantity += quantity
         price = item.unit_price
         amount = quantity * price
+        
+        # Wrap text in Paragraph objects for wrapping
         items_data.append([
             str(i + 1),
-            item_code,
-            item_name,
+            Paragraph(item_code, styles['Normal']),
+            Paragraph(item_name, styles['Normal']),
             str(quantity),
             f"${price:,.2f}",
             f"${amount:,.2f}"
         ])
- 
+
     items_table = Table(items_data, colWidths=[0.4*inch, 1*inch, 3.1*inch, 0.7*inch, 1*inch, 1.3*inch])
     items_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('TOPPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
@@ -1938,6 +1955,9 @@ def add_invoice():
             )
             db_session.add(invoice)
             db_session.flush()
+            
+            # Set custom sequence-aware invoice number
+            invoice.invoice_number = generate_document_number(customer, Invoice)
 
             for item_data in invoice_items_data:
                 inv_item = InvoiceItem(
@@ -2146,6 +2166,10 @@ def convert_to_invoice(quotation_id):
         )
         db_session.add(invoice)
         db_session.flush()
+        
+        # Inherit the quotation number if possible, or generate new invoice-specific sequence
+        # User said "quotation id that is to be the same" implying linked numbering
+        invoice.invoice_number = quotation_obj.quotation_number or generate_document_number(quotation_obj.customer, Invoice)
 
         for q_item in quotation_obj.items:
             # Generate code if missing (for legacy items)
@@ -2312,10 +2336,18 @@ def generate_invoice_pdf(invoice_id):
     for i, item in enumerate(invoice_items):
         item_code = item.item_code or "N/A"
         item_text = item.description 
+        
+        # If description is just the code or empty, try to get inventory name
+        if not item_text or item_text == item_code:
+            if item.inventory_id:
+                inventory = db_session.query(Inventory).get(item.inventory_id)
+                if inventory:
+                    item_text = inventory.name
+        
         items_data.append([
             str(i + 1),
             Paragraph(item_code, styles['Normal']),
-            Paragraph(item_text, styles['Normal']),
+            Paragraph(item_text or "N/A", styles['Normal']),
             str(item.quantity),
             f"${item.unit_price:,.2f}",
             f"${item.amount:,.2f}"
@@ -2404,6 +2436,12 @@ def add_payment(invoice_id):
             reference = request.form.get('reference', '')
             notes = request.form.get('notes', '')
 
+            # Generate Transaction ID
+            import random
+            import string
+            suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            transaction_id = f"TX-{datetime.now().strftime('%Y%m%d')}-{suffix}"
+
             if amount > invoice.balance_due:
                 flash(f'Payment amount (${amount}) cannot exceed balance due (${invoice.balance_due})', 'error')
                 return redirect(url_for('add_payment', invoice_id=invoice_id))
@@ -2415,6 +2453,7 @@ def add_payment(invoice_id):
                 amount=amount,
                 payment_method=PaymentType(payment_method),
                 payer_name=payer_name,
+                transaction_id=transaction_id,
                 reference_number=reference,
                 notes=notes,
                 payment_date=datetime.now()
@@ -2552,6 +2591,7 @@ def generate_payment_pdf(payment_id):
     customer = invoice.customer
 
     story.append(Paragraph(f"<b>Received From:</b> {customer.name} {customer.surname or ''}", details_style))
+    story.append(Paragraph(f"<b>Transaction ID:</b> {payment.transaction_id or 'N/A'}", details_style))
     story.append(Paragraph(f"<b>Date:</b> {payment.payment_date.strftime('%d-%m-%Y')}", details_style))
     story.append(Paragraph(f"<b>Payment Method:</b> {payment.payment_method.value}", details_style))
     if payment.reference_number:
@@ -2560,6 +2600,9 @@ def generate_payment_pdf(payment_id):
     story.append(Spacer(1, 0.2*inch))
     
     story.append(Paragraph(f"<b>Payment For:</b> Invoice #{invoice.id}", details_style))
+    
+    if payment.notes:
+        story.append(Paragraph(f"<b>Notes:</b> {payment.notes}", details_style))
     
     story.append(Spacer(1, 0.2*inch))
 

@@ -31,7 +31,8 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="category" class="form-label">Category *</label>
-                            <select class="form-select" id="category" name="category" required>
+                            <select class="form-select" id="category" name="category" required
+                                onchange="toggleNewCategory(this)">
                                 <option value="">Select Category</option>
                                 <option value="Solar Panel" {% if item.category=='Solar Panel' %}selected{% endif %}>
                                     Solar Panel</option>
@@ -50,6 +51,12 @@
                                     %}selected{% endif %}>Electrical Appliances</option>
                                 <option value="Other" {% if item.category=='Other' %}selected{% endif %}>Other</option>
                             </select>
+                        </div>
+                        <div class="col-md-6 mb-3" id="new_category_div"
+                            style="display: {% if item.category == 'Other' %}block{% else %}none{% endif %};">
+                            <label for="new_category" class="form-label">New Category Name *</label>
+                            <input type="text" class="form-control" id="new_category" name="new_category" {% if
+                                item.category=='Other' %}required{% endif %}>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="specifications" class="form-label">Specifications</label>
@@ -94,4 +101,21 @@
         </div>
     </div>
 </div>
+
+{% block scripts %}
+<script>
+    function toggleNewCategory(select) {
+        const newCategoryDiv = document.getElementById('new_category_div');
+        const newCategoryInput = document.getElementById('new_category');
+        if (select.value === 'Other') {
+            newCategoryDiv.style.display = 'block';
+            newCategoryInput.required = true;
+        } else {
+            newCategoryDiv.style.display = 'none';
+            newCategoryInput.required = false;
+            newCategoryInput.value = '';
+        }
+    }
+</script>
+{% endblock %}
 {% endblock %}

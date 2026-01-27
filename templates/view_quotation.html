@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}quotation - {{ quotation.id }}{% endblock %}
+{% block title %}quotation - {{ quotation.quotation_number or quotation.id }}{% endblock %}
 
 {% block content %}
 <div class="container my-5">
@@ -31,7 +31,7 @@
     <div class="row">
         <div class="col-md-6">
             <h3>Quotation</h3>
-            <p>SAL-QTN-2025-{{ '%05d'|format(quotation.id) }}</p>
+            <p>{{ quotation.quotation_number or ('SAL-QTN-2025-' ~ '%05d'|format(quotation.id)) }}</p>
         </div>
         <div class="col-md-6 text-end">
             <p><strong>Date:</strong> <strong>{{ quotation.date_created.strftime('%d-%m-%Y') }}</strong></p>
@@ -63,7 +63,8 @@
                     <tr>
                         <td>{{ loop.index }}</td>
                         <td>{{ item.inventory.specifications if item.inventory else 'N/A' }}</td>
-                        <td>{{ item.inventory.name if item.inventory else 'Unknown Item' }}</td>
+                        <td>{{ item.description if item.description else (item.inventory.name if item.inventory else
+                            'N/A') }}</td>
                         <td class="text-end">{{ item.quantity }}</td>
                         <td class="text-end">${{ "%.2f"|format(item.unit_price) }}</td>
                         <td class="text-end">${{ "%.2f"|format(item.quantity * item.unit_price) }}</td>

@@ -32,8 +32,8 @@
                             <datalist id="customer-list">
                                 {% for customer in customers %}
                                 <option value="{{ customer.identification_number }}">{{ customer.name }} {{
-                                    customer.surname or '' }} - {{
-                                    customer.identification_number }}</option>
+                                    {{ customer.surname or '' }} - ({{ (customer.name[:2].upper() if customer.name else
+                                    'XX') }}{{ customer.identification_number }})</option>
                                 {% endfor %}
                             </datalist>
                         </div>

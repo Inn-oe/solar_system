@@ -34,7 +34,11 @@
                 <tbody>
                     {% for customer in customers %}
                     <tr>
-                        <td class="ps-4 fw-medium">{{ customer.name }} {{ customer.surname or '' }}</td>
+                        <td class="ps-4 fw-medium">
+                            {{ customer.name }} {{ customer.surname or '' }}<br>
+                            <small class="text-primary fw-bold">{{ (customer.name[:2].upper() if customer.name else
+                                'XX') }}{{ customer.identification_number }}</small>
+                        </td>
                         <td>{{ customer.identification_number or '-' }}</td>
                         <td>{{ customer.citizenship or '-' }}</td>
                         <td>{{ customer.phone or '-' }}</td>

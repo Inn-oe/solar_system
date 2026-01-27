@@ -170,6 +170,7 @@ class quotation(Base):
     due_date = Column(DateTime)
     paid_date = Column(DateTime)
     notes = Column(String(500))
+    quotation_number = Column(String(20), unique=True, nullable=True)
     date_created = Column(DateTime, default=datetime.utcnow)
 
 class quotationItem(Base):
@@ -302,6 +303,7 @@ class Pricing(Base):
     item_type = Column(String(50), nullable=False)
     item_name = Column(String(100), nullable=False)
     price = Column(Float, nullable=False)
+    currency = Column(Enum(Currency), default=Currency.USD)
     unit = Column(String(20))
     effective_date = Column(DateTime, default=datetime.utcnow)
     expiry_date = Column(DateTime)
@@ -323,6 +325,7 @@ class Invoice(Base):
     status = Column(Enum(InvoiceStatus), default=InvoiceStatus.DRAFT)
     due_date = Column(DateTime)
     notes = Column(String(500))
+    invoice_number = Column(String(20), unique=True, nullable=True)
     date_created = Column(DateTime, default=datetime.utcnow)
 
 class InvoiceItem(Base):
@@ -349,6 +352,7 @@ class Payment(Base):
 
     payment_method = Column(Enum(PaymentType), default=PaymentType.CASH)
     payer_name = Column(String(100), nullable=True)  # New field for person who paid
+    transaction_id = Column(String(50), unique=True, nullable=True)
     reference_number = Column(String(100))
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)

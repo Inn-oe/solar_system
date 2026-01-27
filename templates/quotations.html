@@ -29,8 +29,12 @@
                 <tbody>
                     {% for quotation in quotations %}
                     <tr>
-                        <td><span class="fw-bold">#{{ quotation.id }}</span></td>
-                        <td>{{ quotation.customer.name }} {{ quotation.customer.surname or '' }}</td>
+                        <td><span class="fw-bold">{{ quotation.quotation_number or ('#' ~ quotation.id) }}</span></td>
+                        <td>
+                            {{ quotation.customer.name }} {{ quotation.customer.surname or '' }}<br>
+                            <small class="text-muted">{{ (quotation.customer.name[:2].upper() if quotation.customer.name
+                                else 'XX') }}{{ quotation.customer.identification_number }}</small>
+                        </td>
                         <td class="text-end fw-bold">${{ "%.2f"|format(quotation.total_amount) }}</td>
                         <td class="text-center">
                             <span

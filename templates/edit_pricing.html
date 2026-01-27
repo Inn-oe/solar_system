@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Pricing - Giebee Engineering{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Edit Pricing Record</h1>
+    <a href="{{ url_for('pricing') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Pricing
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <form method="POST">
+            <div class="mb-3">
+                <label for="item_type" class="form-label">Item Type</label>
+                <select class="form-select" id="item_type" name="item_type" required>
+                    <option value="Product" {{ 'selected' if record.item_type=='Product' }}>Product</option>
+                    <option value="Service" {{ 'selected' if record.item_type=='Service' }}>Service</option>
+                    <option value="Installation" {{ 'selected' if record.item_type=='Installation' }}>Installation
+                    </option>
+                    <option value="Maintenance" {{ 'selected' if record.item_type=='Maintenance' }}>Maintenance</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="item_name" class="form-label">Item Name</label>
+                <input type="text" class="form-control" id="item_name" name="item_name" value="{{ record.item_name }}"
+                    required>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="price" class="form-label">Price</label>
+                    <input type="number" step="0.01" class="form-control" id="price" name="price"
+                        value="{{ record.price }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label for="currency" class="form-label">Currency</label>
+                    <select class="form-select" id="currency" name="currency">
+                        <option value="USD" {{ 'selected' if record.currency.value=='USD' }}>USD</option>
+                        <option value="ZWL" {{ 'selected' if record.currency.value=='ZWL' }}>ZWL</option>
+                        <option value="RAND" {{ 'selected' if record.currency.value=='RAND' }}>RAND</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="unit" class="form-label">Unit</label>
+                    <input type="text" class="form-control" id="unit" name="unit" value="{{ record.unit or '' }}"
+                        placeholder="e.g., per unit, per hour">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="effective_date" class="form-label">Effective Date</label>
+                    <input type="date" class="form-control" id="effective_date" name="effective_date"
+                        value="{{ record.effective_date.strftime('%Y-%m-%d') if record.effective_date else '' }}"
+                        required>
+                </div>
+                <div class="col-md-6">
+                    <label for="expiry_date" class="form-label">Expiry Date (Optional)</label>
+                    <input type="date" class="form-control" id="expiry_date" name="expiry_date"
+                        value="{{ record.expiry_date.strftime('%Y-%m-%d') if record.expiry_date else '' }}">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="notes" class="form-label">Notes</label>
+                <textarea class="form-control" id="notes" name="notes" rows="3">{{ record.notes or '' }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Update Pricing</button>
+            <a href="{{ url_for('pricing') }}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

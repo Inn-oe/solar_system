@@ -28,8 +28,12 @@
                 <tbody>
                     {% for invoice in invoices %}
                     <tr>
-                        <td><strong>#{{ invoice.id }}</strong></td>
-                        <td>{{ invoice.customer.name }} {{ invoice.customer.surname or '' }}</td>
+                        <td><strong>{{ invoice.invoice_number or ('#' ~ invoice.id) }}</strong></td>
+                        <td>
+                            {{ invoice.customer.name }} {{ invoice.customer.surname or '' }}<br>
+                            <small class="text-muted">{{ (invoice.customer.name[:2].upper() if invoice.customer.name
+                                else 'XX') }}{{ invoice.customer.identification_number }}</small>
+                        </td>
                         <td>{{ invoice.date_created.strftime('%Y-%m-%d') }}</td>
                         <td>
                             <span class="badge 

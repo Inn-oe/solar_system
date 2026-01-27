@@ -40,7 +40,7 @@
                                 {% if quote.customer %}
                                 <option value="{{ quote.customer.identification_number }}">{{ quote.customer.name }} {{
                                     quote.customer.surname or '' }}
-                                    (Quote #{{ quote.id }})</option>
+                                    ({{ quote.quotation_number or ('Quote #' ~ quote.id) }})</option>
                                 {% endif %}
                                 {% endfor %}
                             </datalist>
@@ -54,7 +54,7 @@
                                 {% if quote.customer %}
                                 <option value="{{ quote.customer.name }} {{ quote.customer.surname or '' }}">ID: {{
                                     quote.customer.identification_number }}
-                                    (Quote #{{ quote.id }})</option>
+                                    ({{ quote.quotation_number or ('Quote #' ~ quote.id) }})</option>
                                 {% endif %}
                                 {% endfor %}
                             </datalist>

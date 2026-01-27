@@ -40,30 +40,26 @@
 
 <!-- KPI Cards -->
 <div class="row g-4 mb-4">
-    <!-- Net Profit -->
-    <div class="col-md-3">
-        <div
-            class="card h-100 border-start border-4 {% if net_profit >= 0 %}border-success{% else %}border-danger{% endif %} shadow-sm">
+    <!-- Total Income -->
+    <div class="col-md-4">
+        <div class="card h-100 border-start border-4 border-success shadow-sm">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-2">
-                    <h6 class="card-subtitle text-muted">Net Profit</h6>
-                    <i
-                        class="fas fa-chart-line {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %} fa-lg"></i>
+                    <h6 class="card-subtitle text-muted">Total Income</h6>
+                    <i class="fas fa-hand-holding-usd text-success fa-lg"></i>
                 </div>
-                <h3 class="card-title mb-0 {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
-                    ${{ "%.2f"|format(net_profit) }}
-                </h3>
-                <small class="text-muted">Revenue - COGS - Expenses</small>
+                <h3 class="card-title mb-0 text-success">${{ "%.2f"|format(total_income) }}</h3>
+                <small class="text-muted">Revenue + Other Income</small>
             </div>
         </div>
     </div>
 
     <!-- Revenue -->
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="card h-100 border-start border-4 border-primary shadow-sm">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-2">
-                    <h6 class="card-subtitle text-muted">Revenue (Invoiced)</h6>
+                    <h6 class="card-subtitle text-muted">Sales Revenue</h6>
                     <i class="fas fa-file-invoice-dollar text-primary fa-lg"></i>
                 </div>
                 <h3 class="card-title mb-0 text-primary">${{ "%.2f"|format(total_sales) }}</h3>
@@ -72,22 +68,8 @@
         </div>
     </div>
 
-    <!-- COGS -->
-    <div class="col-md-3">
-        <div class="card h-100 border-start border-4 border-warning shadow-sm">
-            <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between mb-2">
-                    <h6 class="card-subtitle text-muted">Cost of Goods Sold</h6>
-                    <i class="fas fa-boxes text-warning fa-lg"></i>
-                </div>
-                <h3 class="card-title mb-0 text-dark">${{ "%.2f"|format(cogs) }}</h3>
-                <small class="text-muted">Cost of items sold</small>
-            </div>
-        </div>
-    </div>
-
     <!-- Expenses -->
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="card h-100 border-start border-4 border-danger shadow-sm">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-2">
@@ -103,11 +85,11 @@
 
 <!-- Charts Row 1 -->
 <div class="row mb-4">
-    <!-- Profit Breakdown (Cascade) -->
+    <!-- Financial Waterfall -->
     <div class="col-lg-8 mb-4">
         <div class="card shadow-sm h-100">
             <div class="card-header bg-white">
-                <h5 class="card-title mb-0">Financial Waterfall</h5>
+                <h5 class="card-title mb-0">Monthly Revenue vs Expenses</h5>
             </div>
             <div class="card-body">
                 <canvas id="profitWaterfallChart"></canvas>
@@ -115,11 +97,11 @@
         </div>
     </div>
 
-    <!-- Profit by Activity -->
+    <!-- Income by Activity -->
     <div class="col-lg-4 mb-4">
         <div class="card shadow-sm h-100">
             <div class="card-header bg-white">
-                <h5 class="card-title mb-0">Profit by Activity</h5>
+                <h5 class="card-title mb-0">Income by Activity</h5>
             </div>
             <div class="card-body">
                 <canvas id="profitByActivityChart"></canvas>
@@ -130,11 +112,11 @@
 
 <!-- Charts Row 2 -->
 <div class="row mb-4">
-    <!-- Profit Source (Stock vs Service) -->
+    <!-- Income Source (Stock vs Service) -->
     <div class="col-lg-4 mb-4">
         <div class="card shadow-sm h-100">
             <div class="card-header bg-white">
-                <h5 class="card-title mb-0">Profit Source</h5>
+                <h5 class="card-title mb-0">Income Source</h5>
             </div>
             <div class="card-body text-center">
                 <canvas id="profitSourceChart"></canvas>
@@ -157,33 +139,25 @@
         </div>
     </div>
 
-    <!-- Inventory Turnover / Metrics -->
+    <!-- Summary Metrics -->
     <div class="col-lg-4 mb-4">
         <div class="card shadow-sm h-100">
             <div class="card-header bg-white">
-                <h5 class="card-title mb-0">Performance Metrics</h5>
+                <h5 class="card-title mb-0">Summary</h5>
             </div>
             <div class="card-body">
                 <ul class="list-group list-group-flush">
                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Gross Profit Margin
-                        <span class="fw-bold">
-                            {% if total_sales > 0 %}
-                            {{ "%.1f"|format((gross_profit / total_sales) * 100) }}%
-                            {% else %}0%{% endif %}
-                        </span>
+                        Gross Sales
+                        <span class="fw-bold">${{ "%.2f"|format(total_sales) }}</span>
                     </li>
                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Net Profit Margin
-                        <span class="fw-bold">
-                            {% if total_sales > 0 %}
-                            {{ "%.1f"|format((net_profit / total_sales) * 100) }}%
-                            {% else %}0%{% endif %}
-                        </span>
+                        Other Income
+                        <span class="fw-bold">${{ "%.2f"|format(other_income) }}</span>
                     </li>
                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Inventory Turnover
-                        <span class="fw-bold">{{ "%.2f"|format(inventory_turnover) }}x</span>
+                        Total Outgoings
+                        <span class="fw-bold">${{ "%.2f"|format(total_expenses) }}</span>
                     </li>
                 </ul>
             </div>
@@ -269,28 +243,28 @@
     }
     });
 
-    // --- 2. Profit by Activity (Doughnut)
+    // --- 2. Income by Activity (Doughnut)
     const ctxActivity = document.getElementById('profitByActivityChart').getContext('2d');
     new Chart(ctxActivity, {
         type: 'doughnut',
         data: {
-            labels: {{ profit_by_activity.keys() | list | tojson }},
+            labels: {{ income_by_activity.keys() | list | tojson }},
         datasets: [{
-            data: {{ profit_by_activity.values() | list | tojson }},
+            data: {{ income_by_activity.values() | list | tojson }},
         backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#858796'],
         hoverOffset: 4
             }]
         }
     });
 
-    // --- 3. Profit Source (Stock vs Service) (Pie)
+    // --- 3. Income Source (Stock vs Service) (Pie)
     const ctxSource = document.getElementById('profitSourceChart').getContext('2d');
     new Chart(ctxSource, {
         type: 'pie',
         data: {
-            labels: {{ profit_by_source.keys() | list | tojson }},
+            labels: {{ income_by_source.keys() | list | tojson }},
         datasets: [{
-            data: {{ profit_by_source.values() | list | tojson }},
+            data: {{ income_by_source.values() | list | tojson }},
         backgroundColor: ['#36a2eb', '#ffce56'],
             }]
         }

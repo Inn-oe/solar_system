@@ -25,11 +25,12 @@
                             <input type="text" class="form-control" id="brand" name="brand">
                         </div>
                     </div>
-                    
+
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="category" class="form-label">Category *</label>
-                            <select class="form-select" id="category" name="category" required>
+                            <select class="form-select" id="category" name="category" required
+                                onchange="toggleNewCategory(this)">
                                 <option value="">Select Category</option>
                                 <option value="Solar Panel">Solar Panel</option>
                                 <option value="Battery">Battery</option>
@@ -42,12 +43,16 @@
                                 <option value="Other">Other</option>
                             </select>
                         </div>
+                        <div class="col-md-6 mb-3" id="new_category_div" style="display: none;">
+                            <label for="new_category" class="form-label">New Category Name *</label>
+                            <input type="text" class="form-control" id="new_category" name="new_category">
+                        </div>
                         <div class="col-md-6 mb-3">
                             <label for="specifications" class="form-label">Specifications</label>
                             <input type="text" class="form-control" id="specifications" name="specifications">
                         </div>
                     </div>
-                    
+
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="quantity" class="form-label">Quantity *</label>
@@ -57,7 +62,8 @@
                             <label for="unit_price" class="form-label">Unit Price *</label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
-                                <input type="number" step="0.01" class="form-control" id="unit_price" name="unit_price" required min="0">
+                                <input type="number" step="0.01" class="form-control" id="unit_price" name="unit_price"
+                                    required min="0">
                             </div>
                         </div>
                     </div>
@@ -81,4 +87,21 @@
         </div>
     </div>
 </div>
+
+{% block scripts %}
+<script>
+    function toggleNewCategory(select) {
+        const newCategoryDiv = document.getElementById('new_category_div');
+        const newCategoryInput = document.getElementById('new_category');
+        if (select.value === 'Other') {
+            newCategoryDiv.style.display = 'block';
+            newCategoryInput.required = true;
+        } else {
+            newCategoryDiv.style.display = 'none';
+            newCategoryInput.required = false;
+            newCategoryInput.value = '';
+        }
+    }
+</script>
+{% endblock %}
 {% endblock %}

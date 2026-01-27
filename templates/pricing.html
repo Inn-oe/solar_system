@@ -17,7 +17,6 @@
                 <th>Item Type</th>
                 <th>Item Name</th>
                 <th>Price</th>
-                <th>Currency</th>
                 <th>Unit</th>
                 <th>Effective Date</th>
                 <th>Expiry Date</th>
@@ -29,16 +28,19 @@
             <tr>
                 <td>{{ record.item_type or '-' }}</td>
                 <td>{{ record.item_name or '-' }}</td>
-                <td>${{ "%.2f"|format(record.price) if record.price else '0.00' }}</td>
-                <td>{{ record.currency or 'USD' }}</td>
+                <td>{{ record.currency.value if record.currency else 'USD' }} {{ "%.2f"|format(record.price) if
+                    record.price else '0.00' }}</td>
                 <td>{{ record.unit or '-' }}</td>
                 <td>{{ record.effective_date or '-' }}</td>
                 <td>{{ record.expiry_date or '-' }}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary">
+                    <a href="{{ url_for('edit_pricing', pricing_id=record.id) }}"
+                        class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-edit"></i>
-                    </button>
-                    <form method="POST" action="{{ url_for('delete_pricing', pricing_id=record.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this pricing record?');">
+                    </a>
+                    <form method="POST" action="{{ url_for('delete_pricing', pricing_id=record.id) }}"
+                        style="display: inline;"
+                        onsubmit="return confirm('Are you sure you want to delete this pricing record?');">
                         <button type="submit" class="btn btn-sm btn-danger">
                             <i class="fas fa-trash"></i> Delete
                         </button>

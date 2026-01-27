@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
 
-{% block title %}View Invoice #{{ invoice.id }} - Giebee Engineering{% endblock %}
+{% block title %}View Invoice {{ invoice.invoice_number or ('#' ~ invoice.id) }} - Giebee Engineering{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h2>Invoice #{{ invoice.id }}</h2>
+        <h2>Invoice {{ invoice.invoice_number or ('#' ~ invoice.id) }}</h2>
         <span class="badge 
             {% if invoice.status.value == 'DRAFT' %}bg-secondary
             {% elif invoice.status.value == 'SENT' %}bg-info
@@ -69,7 +69,8 @@
                             <tr>
                                 <td>
                                     <div><strong>{{ item.item_code }}</strong></div>
-                                    <small class="text-muted">{{ item.description }}</small>
+                                    <small class="text-muted">{{ item.description or (item.inventory.name if
+                                        item.inventory else '') }}</small>
                                 </td>
                                 <td class="text-center">{{ item.quantity }}</td>
                                 <td class="text-end">${{ "%.2f"|format(item.unit_price) }}</td>
@@ -111,6 +112,8 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="mb-1">${{ "%.2f"|format(payment.amount) }}</h6>
+                                <small class="d-block text-primary fw-bold">{{ payment.transaction_id or 'N/A'
+                                    }}</small>
                                 <small>{{ payment.payment_date.strftime('%Y-%m-%d') }}</small>
                             </div>
                             <a href="{{ url_for('generate_payment_pdf', payment_id=payment.id) }}"
@@ -146,8 +149,8 @@
                 <p><strong>Created:</strong> {{ invoice.date_created.strftime('%Y-%m-%d %H:%M') }}</p>
                 {% if invoice.quotation_id %}
                 <p><strong>Converted from:</strong> <a
-                        href="{{ url_for('view_quotation', quotation_id=invoice.quotation_id) }}">Quotation #{{
-                        invoice.quotation_id }}</a></p>
+                        href="{{ url_for('view_quotation', quotation_id=invoice.quotation_id) }}">Quotation {{
+                        invoice.quotation.quotation_number or ('#' ~ invoice.quotation_id) }}</a></p>
                 {% endif %}
             </div>
         </div>
