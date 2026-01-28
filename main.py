@@ -1508,14 +1508,34 @@ def delete_supplier(supplier_id):
 
 @app.route('/inventory/delete/<int:inventory_id>', methods=['POST'])
 def delete_inventory(inventory_id):
-    """Delete inventory item"""
+    """Delete inventory item and handle dependencies"""
     item = db_session.query(Inventory).get(inventory_id)
-    if item:
+    if not item:
+        flash('Inventory item not found!', 'error')
+        return redirect(url_for('inventory'))
+
+    try:
+        # 1. Delete associated stock transactions
+        db_session.query(StockTransaction).filter_by(inventory_id=inventory_id).delete()
+        
+        # 2. Nullify references in quotation items (they keep their description/quantity)
+        quotation_items = db_session.query(quotationItem).filter_by(inventory_id=inventory_id).all()
+        for q_item in quotation_items:
+            q_item.inventory_id = None
+            
+        # 3. Nullify references in invoice items
+        invoice_items = db_session.query(InvoiceItem).filter_by(inventory_id=inventory_id).all()
+        for i_item in invoice_items:
+            i_item.inventory_id = None
+
+        # 4. Delete the item itself
         db_session.delete(item)
         db_session.commit()
-        flash('Inventory item deleted successfully!', 'success')
-    else:
-        flash('Inventory item not found!', 'error')
+        flash('Inventory item and related transactions deleted successfully!', 'success')
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error deleting inventory item: {str(e)}', 'error')
+        
     return redirect(url_for('inventory'))
 
 @app.route('/quotations/delete/<int:quotation_id>', methods=['POST'])
