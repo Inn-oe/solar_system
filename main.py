@@ -2767,13 +2767,6 @@ def check_db_schema():
     except Exception as e:
         print(f"Schema check warning: {e}")
 
-@app.errorhandler(500)
-def handle_500(e):
-    import traceback
-    error_details = traceback.format_exc()
-    print(f"CRITICAL 500 ERROR:\n{error_details}")
-    return f"Internal Server Error Details:\n\n{error_details}", 500
-
 @app.before_request
 def startup_check():
     if not hasattr(app, 'schema_checked'):
