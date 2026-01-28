@@ -83,13 +83,15 @@ def normalize_enums():
 @app.context_processor
 def inject_db_type():
     from database import engine
-    db_url = str(engine.url)
-    if 'sqlite' in db_url:
-        return dict(db_type='SQLite (Local/Ephemeral)')
-    elif 'postgres' in db_url:
-        return dict(db_type='PostgreSQL (Persistent)')
-    else:
-        return dict(db_type='Unknown Database', hasattr=hasattr, getattr=getattr)
+    try:
+        db_url = str(engine.url)
+        if 'sqlite' in db_url:
+            return dict(db_type='SQLite (Local/Ephemeral)')
+        elif 'postgres' in db_url:
+            return dict(db_type='PostgreSQL (Persistent)')
+    except Exception:
+        pass
+    return dict(db_type='Unknown Database')
 
     # Normalize FinancialRecord.payment_method
     try:
@@ -2683,6 +2685,7 @@ def generate_payment_pdf(payment_id):
 def check_db_schema():
     """Checks for missing columns and adds them if necessary (Simple Migration)"""
     from sqlalchemy import text
+    from database import engine
     try:
         # Check for payer_name in payments
         with engine.connect() as conn:
@@ -2702,6 +2705,13 @@ def check_db_schema():
                 pass
     except Exception as e:
         print(f"Schema check warning: {e}")
+
+@app.errorhandler(500)
+def handle_500(e):
+    import traceback
+    error_details = traceback.format_exc()
+    print(f"CRITICAL 500 ERROR:\n{error_details}")
+    return f"Internal Server Error Details:\n\n{error_details}", 500
 
 @app.before_request
 def startup_check():
