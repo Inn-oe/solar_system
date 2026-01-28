@@ -33,35 +33,25 @@
                             <label for="customer_identification" class="form-label fw-medium">Identification Number
                                 <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="customer_identification"
-                                name="customer_identification" required list="customer-list-quotes"
+                                name="customer_identification" required list="customer-id-list"
                                 placeholder="Start typing ID number...">
-                            <datalist id="customer-list-quotes">
-                                {% for quote in quotations %}
-                                <option value="{{ quote.customer_id }}">{{ quote.number }} (Customer ID: {{
-                                    quote.customer_id }})</option>
+                            <datalist id="customer-id-list">
+                                {% for customer in customers %}
+                                <option value="{{ customer.identification_number }}">{{ customer.name }} {{
+                                    customer.surname or '' }}</option>
                                 {% endfor %}
                             </datalist>
                         </div>
                         <div class="col-md-4">
                             <label for="customer_name_display" class="form-label fw-medium">Customer Name</label>
-                            <input type="text" class="form-control" id="customer_name_display"
-                                list="customer-name-list-quotes" placeholder="Start typing Name...">
-                            <datalist id="customer-name-list-quotes">
-                                {% for quote in quotations %}
-                                <option value="{{ quote.number }}">ID: {{ quote.customer_id }}</option>
+                            <input type="text" class="form-control" id="customer_name_display" list="customer-name-list"
+                                placeholder="Start typing Name...">
+                            <datalist id="customer-name-list">
+                                {% for customer in customers %}
+                                <option value="{{ customer.name }} {{ customer.surname or '' }}">ID: {{
+                                    customer.identification_number }}</option>
                                 {% endfor %}
                             </datalist>
-                        </div>
-                    </div>
-                    <div class="row g-3 mt-2">
-                        <div class="col-md-6">
-                            <label for="quotation_id" class="form-label fw-medium">Link Quotation (Optional)</label>
-                            <select class="form-select border-primary" id="quotation_id" name="quotation_id">
-                                <option value="">-- No Quotation Linked --</option>
-                                <!-- Population handled by JS -->
-                            </select>
-                            <div class="form-text text-muted small">Select a customer first to see their quotations.
-                                Linking a quotation will auto-populate items.</div>
                         </div>
                     </div>
                 </div>
@@ -154,79 +144,52 @@
 </div>
 
 <script>
-    const allQuotations = {{ quotations| tojson }};
-
     document.addEventListener('DOMContentLoaded', function () {
         const customerIdInput = document.getElementById('customer_identification');
         const customerNameInput = document.getElementById('customer_name_display');
-        const quotationSelect = document.getElementById('quotation_id');
-
-        // Function to filter quotations dropdown
-        function updateQuotationDropdown(cid) {
-            quotationSelect.innerHTML = '<option value="">-- No Quotation Linked --</option>';
-            const filtered = allQuotations.filter(q => q.customer_id === cid);
-            filtered.forEach(q => {
-                const opt = document.createElement('option');
-                opt.value = q.id;
-                opt.textContent = q.number;
-                quotationSelect.appendChild(opt);
-            });
-        }
 
         if (customerIdInput) {
-            customerIdInput.addEventListener('change', function () {
-                updateQuotationDropdown(this.value);
-            });
-            // Also trigger on input in case they select from datalist
             customerIdInput.addEventListener('input', function () {
-                updateQuotationDropdown(this.value);
+                const inputValue = this.value;
+                const datalist = document.getElementById('customer-id-list');
+                const options = datalist.options;
+                let customerName = '';
+
+                for (let i = 0; i < options.length; i++) {
+                    if (options[i].value === inputValue) {
+                        const text = options[i].textContent;
+                        customerName = text.trim();
+                        break;
+                    }
+                }
+                if (customerName) {
+                    customerNameInput.value = customerName;
+                }
             });
         }
 
-        // Handle Quotation Selection
-        quotationSelect.addEventListener('change', function () {
-            const qId = parseInt(this.value);
-            if (!qId) return;
+        if (customerNameInput) {
+            customerNameInput.addEventListener('input', function () {
+                const inputValue = this.value.trim();
+                const datalist = document.getElementById('customer-name-list');
+                const options = datalist.options;
+                let customerId = '';
 
-            const q = allQuotations.find(quote => quote.id === qId);
-            if (q && q.items && q.items.length > 0) {
-                if (confirm(`Populate invoice items from Quotation ${q.number}? This will replace current items.`)) {
-                    // Clear existing items
-                    const itemsBody = document.getElementById('itemsBody');
-                    itemsBody.innerHTML = '';
-
-                    // Add items from quotation
-                    q.items.forEach(item => {
-                        const newRow = addRow();
-
-                        // Set Hidden ID
-                        newRow.querySelector('.item-id').value = item.inventory_id;
-
-                        // Set Search Input (Visible Name)
-                        const searchInput = newRow.querySelector('.item-search');
-                        searchInput.value = item.name;
-
-                        // Set Quantity
-                        newRow.querySelector('.quantity-input').value = item.quantity;
-
-                        // Set Unit Price
-                        newRow.querySelector('.price-input').value = item.unit_price;
-
-                        // If custom item, handle display
-                        if (item.inventory_id === 'custom') {
-                            const customInput = newRow.querySelector('.custom-item-name');
-                            customInput.value = item.name;
-                            customInput.style.display = 'block';
+                for (let i = 0; i < options.length; i++) {
+                    if (options[i].value.trim() === inputValue) {
+                        const text = options[i].textContent;
+                        const match = text.match(/ID:\s*([^\s]*)/);
+                        if (match && match[1]) {
+                            customerId = match[1].trim();
                         }
-
-                        // Calculate totals for the row
-                        calculateRowTotal(searchInput);
-                    });
+                        break;
+                    }
                 }
-            } else if (q) {
-                alert("This quotation has no items.");
-            }
-        });
+                if (customerId) {
+                    customerIdInput.value = customerId;
+                }
+            });
+        }
     });
 
     function updateItemFromSearch(input) {

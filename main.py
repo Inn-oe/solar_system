@@ -2053,7 +2053,6 @@ def add_invoice():
             invoice = Invoice(
                 customer_id=customer.identification_number,
                 activity_type_id=activity_type_id,
-                quotation_id=int(request.form.get('quotation_id')) if request.form.get('quotation_id') else None,
                 total_amount=calculated_total,
                 balance_due=calculated_total,
                 status=InvoiceStatus.DRAFT,
@@ -2106,34 +2105,10 @@ def add_invoice():
 
     customers = db_session.query(Customer).all()
     inventory_items = db_session.query(Inventory).filter(Inventory.quantity > 0).all()
-    
-    # Prepare structured quotations data for frontend auto-population
-    all_quotations = db_session.query(quotation).order_by(quotation.date_created.desc()).all()
-    quotations_data = []
-    for q in all_quotations:
-        items = []
-        for item in q.items:
-            # Safely get inventory properties if available, otherwise use stored description
-            inv_name = item.inventory.name if item.inventory else (item.description or "Unknown Item")
-            items.append({
-                'inventory_id': item.inventory_id or 'custom',
-                'name': inv_name,
-                'quantity': item.quantity,
-                'unit_price': item.unit_price,
-                'item_code': item.item_code or ("INV-ITM" if item.inventory_id else "CUST-ITM")
-            })
-        quotations_data.append({
-            'id': q.id,
-            'number': q.quotation_number or f"Quote #{q.id}",
-            'customer_id': q.customer_id,
-            'items': items
-        })
-
     activity_types = db_session.query(ActivityType).filter_by(is_active=True).all()
     return render_template('add_invoice.html', 
                          customers=customers, 
                          inventory_items=inventory_items, 
-                         quotations=quotations_data, 
                          activity_types=activity_types)
 
 @app.route('/invoices/edit/<int:invoice_id>', methods=['GET', 'POST'])
