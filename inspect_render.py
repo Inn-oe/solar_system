@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, text
 import os
 
-url = "postgresql://giebee_db_w7yw_user:y61OYjALdxJy3A9x1d6W5IPfO7DLtvhG@dpg-d5mvmjemcj7s73cboopg-a.frankfurt-postgres.render.com/giebee_db_w7yw"
+url = os.environ.get("DATABASE_URL") or input("Enter RENDER_DATABASE_URL: ").strip()
 engine = create_engine(url)
 
 def inspect_db():

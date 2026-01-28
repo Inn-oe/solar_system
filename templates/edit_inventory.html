@@ -34,21 +34,10 @@
                             <select class="form-select" id="category" name="category" required
                                 onchange="toggleNewCategory(this)">
                                 <option value="">Select Category</option>
-                                <option value="Solar Panel" {% if item.category=='Solar Panel' %}selected{% endif %}>
-                                    Solar Panel</option>
-                                <option value="Battery" {% if item.category=='Battery' %}selected{% endif %}>Battery
-                                </option>
-                                <option value="Inverter" {% if item.category=='Inverter' %}selected{% endif %}>Inverter
-                                </option>
-                                <option value="CCTV" {% if item.category=='CCTV' %}selected{% endif %}>CCTV</option>
-                                <option value="Geyser" {% if item.category=='Geyser' %}selected{% endif %}>Geyser
-                                </option>
-                                <option value="Alarm System" {% if item.category=='Alarm System' %}selected{% endif %}>
-                                    Alarm System</option>
-                                <option value="Borehole Equipment" {% if item.category=='Borehole Equipment'
-                                    %}selected{% endif %}>Borehole Equipment</option>
-                                <option value="Electrical Appliances" {% if item.category=='Electrical Appliances'
-                                    %}selected{% endif %}>Electrical Appliances</option>
+                                {% for category in categories %}
+                                <option value="{{ category }}" {% if item.category==category %}selected{% endif %}>{{
+                                    category }}</option>
+                                {% endfor %}
                                 <option value="Other" {% if item.category=='Other' %}selected{% endif %}>Other</option>
                             </select>
                         </div>

@@ -113,3 +113,10 @@ dmypy.json
 
 # uv
 uv.lock
+
+# Giebee Custom Ignores
+instance/*.db
+backups/
+sync_log.txt
+*.log
+.env

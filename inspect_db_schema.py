@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, text
 import sys
 
 # Remote DB URL
-DB_URL = "postgresql://giebee_user:AMGuGARixKT15xI4ZSs5ZV0jxwuhgobY@dpg-d5nlskvgi27c73eof1b0-a.oregon-postgres.render.com/giebee_erp"
+DB_URL = os.environ.get("DATABASE_URL") or input("Enter RENDER_DATABASE_URL: ").strip()
 
 def check_columns():
     try:

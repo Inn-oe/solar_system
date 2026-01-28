@@ -9,7 +9,7 @@ import sys
 import datetime
 
 # Remote DB URL
-DB_URL = "postgresql://giebee_user:AMGuGARixKT15xI4ZSs5ZV0jxwuhgobY@dpg-d5nlskvgi27c73eof1b0-a.oregon-postgres.render.com/giebee_erp"
+DB_URL = os.environ.get("DATABASE_URL") or input("Enter RENDER_DATABASE_URL: ").strip()
 
 # Define minimal models to replicate the crash condition
 Base = declarative_base()

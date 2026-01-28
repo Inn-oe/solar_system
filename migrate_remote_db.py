@@ -1,28 +1,59 @@
-
-import sqlalchemy
-from sqlalchemy import create_engine, text
+import os
 import sys
+import sqlalchemy as sa
+from sqlalchemy import text
 
-# Remote DB URL
-DB_URL = "postgresql://giebee_user:AMGuGARixKT15xI4ZSs5ZV0jxwuhgobY@dpg-d5nlskvgi27c73eof1b0-a.oregon-postgres.render.com/giebee_erp"
-
-def migrate_db():
-    try:
-        engine = create_engine(DB_URL)
-        with engine.connect() as connection:
-            print("Connected to remote DB.")
-            print("Attempting to add 'surname' column to 'customers' table...")
+def migrate_remote(database_url):
+    print(f"Connecting to remote database...")
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    engine = sa.create_engine(database_url)
+    
+    # Define columns to check and add
+    # Format: (table_name, column_name, column_type)
+    migrations = [
+        ('pricing', 'currency', 'VARCHAR(50) DEFAULT \'USD\''),
+        ('activities', 'currency', 'VARCHAR(50) DEFAULT \'USD\''),
+        ('suppliers', 'currency', 'VARCHAR(50) DEFAULT \'USD\''),
+        ('stock_transactions', 'currency', 'VARCHAR(50) DEFAULT \'USD\''),
+        ('invoices', 'invoice_number', 'VARCHAR(20) UNIQUE'),
+        ('quotations', 'quotation_number', 'VARCHAR(20) UNIQUE'),
+        ('customers', 'identification_number', 'VARCHAR(50)'),
+        ('payments', 'transaction_id', 'VARCHAR(50) UNIQUE'),
+        ('payments', 'payer_name', 'VARCHAR(100)'),
+        ('invoice_items', 'cost_price', 'FLOAT DEFAULT 0.0'),
+    ]
+    
+    with engine.connect() as conn:
+        for table, column, col_type in migrations:
+            print(f"Checking {table}.{column}...")
+            # Check if column exists
+            check_query = text(f"""
+                SELECT count(*) 
+                FROM information_schema.columns 
+                WHERE table_name='{table}' AND column_name='{column}';
+            """)
+            result = conn.execute(check_query).scalar()
             
-            # Using text() for raw SQL execution and wrapped in a transaction if needed (autocommit=False usually requires explicit commit)
-            # SQLAlchemy 2.0+ pattern for schema changes
-            connection.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS surname VARCHAR(100);"))
-            connection.commit()
-            
-            print("Migration successful: Added 'surname' column.")
+            if result == 0:
+                print(f"Adding column {column} to table {table}...")
+                try:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type};"))
+                    conn.commit()
+                    print(f"Successfully added {column}.")
+                except Exception as e:
+                    print(f"Failed to add {column}: {e}")
+                    conn.rollback()
+            else:
+                print(f"Column {column} already exists in {table}.")
 
-    except Exception as e:
-        print(f"Migration Failed: {e}")
-        sys.exit(1)
+    print("\nMigration check complete!")
 
 if __name__ == "__main__":
-    migrate_db()
+    url = input("Please enter your RENDER_DATABASE_URL: ").strip()
+    if not url:
+        print("Error: No URL provided.")
+        sys.exit(1)
+    
+    migrate_remote(url)

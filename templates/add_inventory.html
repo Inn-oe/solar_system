@@ -32,14 +32,9 @@
                             <select class="form-select" id="category" name="category" required
                                 onchange="toggleNewCategory(this)">
                                 <option value="">Select Category</option>
-                                <option value="Solar Panel">Solar Panel</option>
-                                <option value="Battery">Battery</option>
-                                <option value="Inverter">Inverter</option>
-                                <option value="CCTV">CCTV</option>
-                                <option value="Geyser">Geyser</option>
-                                <option value="Alarm System">Alarm System</option>
-                                <option value="Borehole Equipment">Borehole Equipment</option>
-                                <option value="Electrical Appliances">Electrical Appliances</option>
+                                {% for category in categories %}
+                                <option value="{{ category }}">{{ category }}</option>
+                                {% endfor %}
                                 <option value="Other">Other</option>
                             </select>
                         </div>

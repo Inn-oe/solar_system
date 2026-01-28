@@ -89,7 +89,7 @@ def inject_db_type():
     elif 'postgres' in db_url:
         return dict(db_type='PostgreSQL (Persistent)')
     else:
-        return dict(db_type='Unknown Database')
+        return dict(db_type='Unknown Database', hasattr=hasattr, getattr=getattr)
 
     # Normalize FinancialRecord.payment_method
     try:
@@ -221,8 +221,11 @@ def quotations():
 @app.route('/activities')
 def activities():
     """List company activities"""
+    from models import ActivityType
     activities = db_session.query(Activity).order_by(Activity.date.desc()).all()
-    return render_template('activities.html', activities=activities)
+    # Also need activity_types for some filtering or modal UI if present
+    activity_types = db_session.query(ActivityType).all()
+    return render_template('activities.html', activities=activities, types=activity_types)
 
 @app.route('/financial')
 def financial():
@@ -557,8 +560,18 @@ def add_inventory():
 
         flash('Inventory item added successfully!', 'success')
         return redirect(url_for('inventory'))
+    
+    # Get distinct categories from existing items
+    existing_categories = db_session.query(Inventory.category).distinct().all()
+    categories = {c[0] for c in existing_categories if c[0]}
+    # Add default categories if they don't exist
+    defaults = ["Solar Panel", "Battery", "Inverter", "CCTV", "Geyser", "Alarm System", "Borehole Equipment", "Electrical Appliances"]
+    for d in defaults:
+        categories.add(d)
+    categories = sorted(list(categories))
+    
     suppliers = db_session.query(Supplier).all()
-    return render_template('add_inventory.html', suppliers=suppliers)
+    return render_template('add_inventory.html', suppliers=suppliers, categories=categories)
 
 @app.route('/inventory/edit/<int:inventory_id>', methods=['GET', 'POST'])
 def edit_inventory(inventory_id):
@@ -585,8 +598,17 @@ def edit_inventory(inventory_id):
         flash('Inventory item updated successfully!', 'success')
         return redirect(url_for('inventory'))
     
+    # Get distinct categories from existing items
+    existing_categories = db_session.query(Inventory.category).distinct().all()
+    categories = {c[0] for c in existing_categories if c[0]}
+    # Add default categories if they don't exist
+    defaults = ["Solar Panel", "Battery", "Inverter", "CCTV", "Geyser", "Alarm System", "Borehole Equipment", "Electrical Appliances"]
+    for d in defaults:
+        categories.add(d)
+    categories = sorted(list(categories))
+    
     suppliers = db_session.query(Supplier).all()
-    return render_template('edit_inventory.html', item=item, suppliers=suppliers)
+    return render_template('edit_inventory.html', item=item, suppliers=suppliers, categories=categories)
 
 @app.route('/quotations/add', methods=['GET', 'POST'])
 def add_quotation():
@@ -850,7 +872,7 @@ def add_activity():
 def activity_types():
     """List all activity types"""
     activity_types = db_session.query(ActivityType).all()
-    return render_template('activity_types.html', activity_types=activity_types)
+    return render_template('activity_types.html', types=activity_types)
 
 @app.route('/activity_types/add', methods=['GET', 'POST'])
 def add_activity_type():
