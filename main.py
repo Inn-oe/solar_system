@@ -1341,14 +1341,24 @@ def add_journey_record():
 
 @app.route('/journey_tracking/delete/<int:journey_record_id>', methods=['POST'])
 def delete_journey_record(journey_record_id):
-    """Delete journey record"""
+    """Delete journey record and handle dependencies"""
     record = db_session.query(JourneyRecord).get(journey_record_id)
-    if record:
+    if not record:
+        flash('Journey record not found!', 'error')
+        return redirect(url_for('journey_tracking'))
+
+    try:
+        # Nullify references in fuel and mileage records
+        db_session.query(FuelRecord).filter_by(journey_id=journey_record_id).update({FuelRecord.journey_id: None})
+        db_session.query(MileageRecord).filter_by(journey_id=journey_record_id).update({MileageRecord.journey_id: None})
+        
         db_session.delete(record)
         db_session.commit()
         flash('Journey record deleted successfully!', 'success')
-    else:
-        flash('Journey record not found!', 'error')
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error deleting journey record: {str(e)}', 'error')
+        
     return redirect(url_for('journey_tracking'))
 
 @app.route('/locations/add', methods=['GET', 'POST'])
@@ -1462,14 +1472,25 @@ def edit_customer(customer_id):
 
 @app.route('/customers/delete/<string:customer_id>', methods=['POST'])
 def delete_customer(customer_id):
-    """Delete customer"""
+    """Delete customer and handle dependencies"""
     customer = db_session.query(Customer).get(customer_id)
-    if customer:
+    if not customer:
+        flash('Customer not found!', 'error')
+        return redirect(url_for('customers'))
+
+    try:
+        # Nullify customer references in other tables
+        db_session.query(Activity).filter_by(customer_id=customer_id).update({Activity.customer_id: None})
+        db_session.query(quotation).filter_by(customer_id=customer_id).update({quotation.customer_id: None})
+        db_session.query(Invoice).filter_by(customer_id=customer_id).update({Invoice.customer_id: None})
+        
         db_session.delete(customer)
         db_session.commit()
         flash('Customer deleted successfully!', 'success')
-    else:
-        flash('Customer not found!', 'error')
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error deleting customer: {str(e)}', 'error')
+        
     return redirect(url_for('customers'))
 
 @app.route('/suppliers/edit/<int:supplier_id>', methods=['GET', 'POST'])
@@ -1498,14 +1519,23 @@ def edit_supplier(supplier_id):
 
 @app.route('/suppliers/delete/<int:supplier_id>', methods=['POST'])
 def delete_supplier(supplier_id):
-    """Delete supplier"""
+    """Delete supplier and handle dependencies"""
     supplier = db_session.query(Supplier).get(supplier_id)
-    if supplier:
+    if not supplier:
+        flash('Supplier not found!', 'error')
+        return redirect(url_for('suppliers'))
+
+    try:
+        # Nullify references in inventory items
+        db_session.query(Inventory).filter_by(supplier_id=supplier_id).update({Inventory.supplier_id: None})
+        
         db_session.delete(supplier)
         db_session.commit()
         flash('Supplier deleted successfully!', 'success')
-    else:
-        flash('Supplier not found!', 'error')
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error deleting supplier: {str(e)}', 'error')
+        
     return redirect(url_for('suppliers'))
 
 @app.route('/inventory/delete/<int:inventory_id>', methods=['POST'])
@@ -1542,15 +1572,27 @@ def delete_inventory(inventory_id):
 
 @app.route('/quotations/delete/<int:quotation_id>', methods=['POST'])
 def delete_quotation(quotation_id):
-    """Delete quotation"""
+    """Delete quotation and handle dependencies"""
     quotation_obj = db_session.query(quotation).get(quotation_id)
-    if quotation_obj:
-        # Note: Quotations do NOT deduct stock, so we do NOT restore stock here.
+    if not quotation_obj:
+        flash('Quotation not found!', 'error')
+        return redirect(url_for('quotations'))
+
+    try:
+        # 1. Nullify references in invoices
+        db_session.query(Invoice).filter_by(quotation_id=quotation_id).update({Invoice.quotation_id: None})
+        
+        # 2. Delete associated quotation items
+        db_session.query(quotationItem).filter_by(quotation_id=quotation_id).delete()
+        
+        # 3. Delete the quotation itself
         db_session.delete(quotation_obj)
         db_session.commit()
-        flash('quotation deleted successfully!', 'success')
-    else:
-        flash('quotation not found!', 'error')
+        flash('Quotation deleted successfully!', 'success')
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error deleting quotation: {str(e)}', 'error')
+        
     return redirect(url_for('quotations'))
 
 @app.route('/invoices/delete/<int:invoice_id>', methods=['POST'])
@@ -1637,26 +1679,45 @@ def delete_payment(payment_id):
 
 @app.route('/activities/delete/<int:activity_id>', methods=['POST'])
 def delete_activity(activity_id):
-    """Delete activity"""
+    """Delete activity and handle dependencies"""
     activity = db_session.query(Activity).get(activity_id)
-    if activity:
+    if not activity:
+        flash('Activity not found!', 'error')
+        return redirect(url_for('activities'))
+
+    try:
+        # Nullify references in journey records
+        db_session.query(JourneyRecord).filter_by(activity_id=activity_id).update({JourneyRecord.activity_id: None})
+        
         db_session.delete(activity)
         db_session.commit()
         flash('Activity deleted successfully!', 'success')
-    else:
-        flash('Activity not found!', 'error')
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error deleting activity: {str(e)}', 'error')
+        
     return redirect(url_for('activities'))
 
 @app.route('/activity_types/delete/<int:type_id>', methods=['POST'])
 def delete_activity_type(type_id):
-    """Delete activity type"""
+    """Delete activity type and handle dependencies"""
     activity_type = db_session.query(ActivityType).get(type_id)
-    if activity_type:
+    if not activity_type:
+        flash('Activity type not found!', 'error')
+        return redirect(url_for('activity_types'))
+
+    try:
+        # Nullify references in activities and invoices
+        db_session.query(Activity).filter_by(activity_type_id=type_id).update({Activity.activity_type_id: None})
+        db_session.query(Invoice).filter_by(activity_type_id=type_id).update({Invoice.activity_type_id: None})
+        
         db_session.delete(activity_type)
         db_session.commit()
         flash('Activity type deleted successfully!', 'success')
-    else:
-        flash('Activity type not found!', 'error')
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error deleting activity type: {str(e)}', 'error')
+        
     return redirect(url_for('activity_types'))
 
 @app.route('/financial/categories/delete/<int:category_id>', methods=['POST'])
