@@ -2275,8 +2275,16 @@ def convert_to_invoice(quotation_id):
         db_session.flush()
         
         # Inherit the quotation number if possible, or generate new invoice-specific sequence
-        # User said "quotation id that is to be the same" implying linked numbering
-        invoice.invoice_number = quotation_obj.quotation_number or generate_document_number(quotation_obj.customer, Invoice)
+        # Check if the quotation_number is already used as an invoice_number to avoid unique constraint violation
+        if quotation_obj.quotation_number:
+            existing = db_session.query(Invoice).filter_by(invoice_number=quotation_obj.quotation_number).first()
+            if existing:
+                # Invoice number already exists, generate a new one instead
+                invoice.invoice_number = generate_document_number(quotation_obj.customer, Invoice)
+            else:
+                invoice.invoice_number = quotation_obj.quotation_number
+        else:
+            invoice.invoice_number = generate_document_number(quotation_obj.customer, Invoice)
 
         for q_item in quotation_obj.items:
             # Generate code if missing (for legacy items)

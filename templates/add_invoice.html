@@ -32,7 +32,7 @@
                         <div class="col-md-4">
                             <label for="customer_identification" class="form-label fw-medium">Identification Number
                                 <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="customer_identification"
+                            <input type="text" class="form-control form-control-lg" id="customer_identification"
                                 name="customer_identification" required list="customer-id-list"
                                 placeholder="Start typing ID number...">
                             <datalist id="customer-id-list">
@@ -44,7 +44,7 @@
                         </div>
                         <div class="col-md-4">
                             <label for="customer_name_display" class="form-label fw-medium">Customer Name</label>
-                            <input type="text" class="form-control" id="customer_name_display" list="customer-name-list"
+                            <input type="text" class="form-control form-control-lg" id="customer_name_display" list="customer-name-list"
                                 placeholder="Start typing Name...">
                             <datalist id="customer-name-list">
                                 {% for customer in customers %}
@@ -87,34 +87,34 @@
                                 <tr>
                                     <td>
                                         <input type="hidden" name="item_id[]" class="item-id">
-                                        <input type="text" class="form-control item-search" name="item_search[]"
+                                        <input type="text" class="form-control form-control-lg item-search" name="item_search[]"
                                             list="invoice-inventory-list"
                                             placeholder="Search item or type new item name..." required
                                             onchange="updateItemFromSearch(this)">
 
-                                        <input type="text" class="form-control mt-2 custom-item-name"
+                                        <input type="text" class="form-control form-control-lg mt-2 custom-item-name"
                                             name="custom_item_name[]" placeholder="Enter Item Name"
                                             style="display: none;">
                                     </td>
                                     <td>
-                                        <input type="number" class="form-control quantity-input" name="quantity[]"
+                                        <input type="number" class="form-control form-control-lg quantity-input" name="quantity[]"
                                             value="1" min="1" required oninput="calculateRowTotal(this)">
                                     </td>
                                     <td>
                                         <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control price-input" name="unit_price[]"
+                                            <span class="input-group-text bg-white px-2 small text-muted">$</span>
+                                            <input type="number" class="form-control form-control-lg price-input" name="unit_price[]"
                                                 step="0.01" required oninput="calculateRowTotal(this)">
                                         </div>
                                     </td>
                                     <td>
                                         <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="text" class="form-control total-input" readonly value="0.00">
+                                            <span class="input-group-text bg-white px-2 small text-muted">$</span>
+                                            <input type="text" class="form-control form-control-lg total-input" readonly value="0.00">
                                         </div>
                                     </td>
                                     <td>
-                                        <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">
+                                        <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeRow(this)" title="Remove Item">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </td>
@@ -125,7 +125,7 @@
 
                     <div class="row mb-4">
                         <div class="col-md-6">
-                            <button type="button" class="btn btn-secondary" onclick="addRow()">
+                            <button type="button" class="btn btn-light text-primary border-primary border-opacity-25 w-100 py-2 mt-2" onclick="addRow()">
                                 <i class="fas fa-plus me-2"></i>Add Item
                             </button>
                         </div>
@@ -137,7 +137,7 @@
             </div>
 
             <div class="d-grid gap-2">
-                <button type="submit" class="btn btn-primary btn-lg">Create Invoice</button>
+                <button type="submit" class="btn btn-primary py-2 fw-medium shadow-sm">Create Invoice</button>
             </div>
         </form>
     </div>
@@ -259,31 +259,31 @@
         newRow.innerHTML = `
             <td>
                 <input type="hidden" name="item_id[]" class="item-id">
-                <input type="text" class="form-control item-search" name="item_search[]" list="invoice-inventory-list"
+                <input type="text" class="form-control form-control-lg item-search" name="item_search[]" list="invoice-inventory-list"
                     placeholder="Search item or type new item name..." required onchange="updateItemFromSearch(this)">
-                <input type="text" class="form-control mt-2 custom-item-name"
+                <input type="text" class="form-control form-control-lg mt-2 custom-item-name"
                     name="custom_item_name[]" placeholder="Enter Item Name"
                     style="display: none;">
             </td>
             <td>
-                <input type="number" class="form-control quantity-input" name="quantity[]"
+                <input type="number" class="form-control form-control-lg quantity-input" name="quantity[]"
                     value="1" min="1" required oninput="calculateRowTotal(this)">
             </td>
             <td>
                 <div class="input-group">
-                    <span class="input-group-text">$</span>
-                    <input type="number" class="form-control price-input" name="unit_price[]"
+                    <span class="input-group-text bg-white px-2 small text-muted">$</span>
+                    <input type="number" class="form-control form-control-lg price-input" name="unit_price[]"
                         step="0.01" required oninput="calculateRowTotal(this)">
                 </div>
             </td>
             <td>
                 <div class="input-group">
-                    <span class="input-group-text">$</span>
-                    <input type="text" class="form-control total-input" readonly value="0.00">
+                    <span class="input-group-text bg-white px-2 small text-muted">$</span>
+                    <input type="text" class="form-control form-control-lg total-input" readonly value="0.00">
                 </div>
             </td>
             <td>
-                <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">
+                <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeRow(this)" title="Remove Item">
                     <i class="fas fa-trash"></i>
                 </button>
             </td>
